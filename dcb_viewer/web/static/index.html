@@ -692,7 +692,7 @@
 
       const loader = new GLTFLoader();
       loader.load(
-        `/models/${modelMeta.filename}`,
+        `/models/${modelMeta.filename}?t=${Date.now()}`,
         (gltf) => {
           if (currentModel) scene.remove(currentModel);
           if (skeletonHelper) scene.remove(skeletonHelper);
