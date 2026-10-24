@@ -34,9 +34,10 @@ def test_export_static_glb():
     # Validate with pygltflib
     gltf = pygltflib.GLTF2().load_from_bytes(glb_bytes)
     assert len(gltf.meshes) == 1
-    assert len(gltf.materials) == 1
-    assert len(gltf.textures) == 1
-    assert len(gltf.images) == 1
+    # Multi-CLUT models create one material/texture per palette used
+    assert len(gltf.materials) >= 1
+    assert len(gltf.textures) >= 1
+    assert len(gltf.images) >= 1
     assert len(gltf.skins) == 0
 
 

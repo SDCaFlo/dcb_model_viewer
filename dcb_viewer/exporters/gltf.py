@@ -239,25 +239,6 @@ def export_model_to_glb(
     """
     builder = GlbBuilder()
 
-    # 1. Texture & Material setup
-    mat_idx = None
-    if texture is not None:
-        pil_img = texture.to_rgba_image(palette_idx=palette_idx)
-        # PSX model UVs are referenced against a 256x256 VRAM texture page.
-        # TIM files on disc are cropped to only the rows/columns in use.
-        # Placing the TIM pixels onto a 256x256 canvas ensures UVs match 1:1 without squashing.
-        if pil_img.size != (256, 256):
-            canvas = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
-            canvas.paste(pil_img, (0, 0))
-            pil_img = canvas
-
-        png_io = io.BytesIO()
-        pil_img.save(png_io, format="PNG")
-        tex_idx = builder.add_texture_png(png_io.getvalue())
-        mat_idx = builder.add_material(tex_idx, name=f"Mat_{model.texture_name}")
-    else:
-        mat_idx = builder.add_material(name="Mat_Default")
-
     # 2. Geometry Preparation
     # PSX to glTF: x' = x, y' = -y, z' = -z
     all_verts: list[np.ndarray] = []
@@ -266,6 +247,7 @@ def export_model_to_glb(
     all_indices: list[np.ndarray] = []
     all_joints: list[np.ndarray] = []
     all_weights: list[np.ndarray] = []
+    all_cluts: list[np.ndarray] = []
 
     vert_offset = 0
     model.compute_rest_pose_transforms()
@@ -295,7 +277,7 @@ def export_model_to_glb(
         norms_len[norms_len == 0] = 1.0
         gl_norms = (gl_norms / norms_len).astype(np.float32)
 
-        tris, uvs = bone.mesh.get_triangulated_indices_and_uvs()
+        tris, uvs, cluts = bone.mesh.get_triangulated_data()
         if len(tris) == 0:
             continue
 
@@ -304,6 +286,7 @@ def export_model_to_glb(
         all_norms.append(gl_norms)
         # Flatten UVs to (3 * num_tris, 2)
         all_uvs.append(uvs.reshape(-1, 2).astype(np.float32))
+        all_cluts.append(cluts)
 
         # Triangles
         indices = (tris + vert_offset).flatten().astype(np.uint32)
@@ -328,13 +311,50 @@ def export_model_to_glb(
     cat_norms = np.concatenate(all_norms, axis=0)
     cat_uvs = np.concatenate(all_uvs, axis=0)
     cat_indices = np.concatenate(all_indices, axis=0)
+    cat_cluts = np.concatenate(all_cluts, axis=0) if all_cluts else np.empty((0,), dtype=np.uint32)
+
+    # Multi-CLUT / Palette Determination per Triangle
+    tri_palette_indices: list[int] = []
+    for clut in cat_cluts:
+        if texture is not None and texture.palettes and clut != 0:
+            p_idx = int(clut >> 6) - int(texture.clut_y)
+            if p_idx < 0 or p_idx >= len(texture.palettes):
+                p_idx = palette_idx
+        else:
+            p_idx = palette_idx if texture is not None else -1
+        tri_palette_indices.append(p_idx)
+
+    # 1. Texture & Material Setup (per unique palette used)
+    pal_mat_map: dict[int, int] = {}
+    if texture is not None:
+        for p_idx in sorted(set(tri_palette_indices)):
+            if p_idx >= 0:
+                pil_img = texture.to_rgba_image(palette_idx=p_idx)
+                # PSX model UVs are referenced against a 256x256 VRAM texture page.
+                # TIM files on disc are cropped to only the rows/columns in use.
+                # Placing the TIM pixels onto a 256x256 canvas ensures UVs match 1:1 without squashing.
+                if pil_img.size != (256, 256):
+                    canvas = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
+                    canvas.paste(pil_img, (0, 0))
+                    pil_img = canvas
+
+                png_io = io.BytesIO()
+                pil_img.save(png_io, format="PNG")
+                tex_idx = builder.add_texture_png(png_io.getvalue())
+                mat_idx = builder.add_material(tex_idx, name=f"Mat_{model.texture_name}_pal{p_idx}")
+                pal_mat_map[p_idx] = mat_idx
+            else:
+                mat_idx = builder.add_material(name="Mat_Default")
+                pal_mat_map[p_idx] = mat_idx
+    else:
+        mat_idx = builder.add_material(name="Mat_Default")
+        pal_mat_map[-1] = mat_idx
 
     # Note on UV indexing: Since faces were triangulated with per-vertex UVs,
     # we unroll vertices to match face indices so UVs align 1:1 with vertex attributes.
     unrolled_verts = cat_verts[cat_indices]
     unrolled_norms = cat_norms[cat_indices]
     unrolled_uvs = cat_uvs
-    unrolled_indices = np.arange(len(unrolled_verts), dtype=np.uint32)
 
     if skinned:
         cat_joints = np.concatenate(all_joints, axis=0)
@@ -342,7 +362,7 @@ def export_model_to_glb(
         unrolled_joints = cat_joints[cat_indices]
         unrolled_weights = cat_weights[cat_indices]
 
-    # 3. Add Mesh Attributes to Buffer
+    # 3. Add Mesh Attributes to Buffer (Shared across all primitives)
     # Position
     pos_bytes = unrolled_verts.tobytes()
     pos_bv = builder.add_buffer_view(pos_bytes, target=TARGET_ARRAY_BUFFER)
@@ -359,11 +379,6 @@ def export_model_to_glb(
     uv_bytes = unrolled_uvs.tobytes()
     uv_bv = builder.add_buffer_view(uv_bytes, target=TARGET_ARRAY_BUFFER)
     uv_acc = builder.add_accessor(uv_bv, COMP_FLOAT, len(unrolled_uvs), "VEC2")
-
-    # Indices
-    idx_bytes = unrolled_indices.tobytes()
-    idx_bv = builder.add_buffer_view(idx_bytes, target=TARGET_ELEMENT_ARRAY_BUFFER)
-    idx_acc = builder.add_accessor(idx_bv, COMP_UNSIGNED_INT, len(unrolled_indices), "SCALAR")
 
     attributes: dict[str, int] = {
         "POSITION": pos_acc,
@@ -385,15 +400,31 @@ def export_model_to_glb(
         attributes["JOINTS_0"] = joint_acc
         attributes["WEIGHTS_0"] = weight_acc
 
-    # Primitive & Mesh
-    primitive: dict = {
-        "attributes": attributes,
-        "indices": idx_acc,
-        "material": mat_idx,
-    }
+    # Primitive & Mesh: group triangles by palette index
+    mesh_primitives: list[dict] = []
+    for p_idx in sorted(set(tri_palette_indices)):
+        tri_indices_for_pal: list[int] = []
+        for t, p in enumerate(tri_palette_indices):
+            if p == p_idx:
+                tri_indices_for_pal.extend([3 * t, 3 * t + 1, 3 * t + 2])
+
+        if not tri_indices_for_pal:
+            continue
+
+        pal_idx_arr = np.array(tri_indices_for_pal, dtype=np.uint32)
+        idx_bytes = pal_idx_arr.tobytes()
+        idx_bv = builder.add_buffer_view(idx_bytes, target=TARGET_ELEMENT_ARRAY_BUFFER)
+        idx_acc = builder.add_accessor(idx_bv, COMP_UNSIGNED_INT, len(pal_idx_arr), "SCALAR")
+
+        mesh_primitives.append({
+            "attributes": attributes,
+            "indices": idx_acc,
+            "material": pal_mat_map[p_idx],
+        })
+
     builder.meshes.append({
         "name": f"Mesh_{model.model_id}",
-        "primitives": [primitive],
+        "primitives": mesh_primitives,
     })
 
     # 4. Skeletal Nodes & Hierarchy

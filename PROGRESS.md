@@ -55,6 +55,14 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
 ## 📝 Activity Log
 
 * **2026-10-24**:
+  * Reverse-engineered multi-CLUT per-polygon palette architecture from `dcb_decomp` (`tmd_sort.c`, `gte.h`, `model_load.c`):
+    * Each textured primitive packet in PSX GPU format stores its CLUT attribute in `u0 >> 16` (and TPAGE in `u1 >> 16`).
+    * Established exact mathematical formula for palette bank indexing: `palette_index = (clut >> 6) - tim.clut_y`.
+    * Verified that Digimon models utilize multiple CLUT banks from their TIM image (e.g. Magnamon #189 uses 11 palettes: Palettes 0, 1, 3, 4, 5 for golden armor; Palettes 2 and 7 for rich blue Veemon skin/limbs; Palette 10 for silver/metal accents).
+    * Updated `dcb_viewer/formats/model.py`: added `clut` field to `PolygonFace` and implemented `get_triangulated_data()` on `BoneMesh`.
+    * Updated `dcb_viewer/exporters/gltf.py`: implemented multi-material glTF primitives sharing position/normal/UV/joint/weight buffer accessors while partitioning triangles by palette index and generating dedicated 256×256 palette materials.
+    * Batch re-exported all 267 models with 100% success rate.
+    * Verified via software rasterization and live Web 3D Viewer that Magnamon now renders with authentic blue skin and golden armor.
   * Project initialized with Python 3.13, Poetry, `AGENTS.md`, and `PROGRESS.md`.
   * Cloned reference repositories `dcb_decomp` and `mkpsxiso` into `external_repository/`.
   * Built `mkpsxiso` and `dumpsxiso` binaries using CMake and MinGW GCC/Ninja.

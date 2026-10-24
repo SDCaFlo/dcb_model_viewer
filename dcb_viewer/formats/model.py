@@ -27,6 +27,7 @@ class PolygonFace:
     uvs: tuple[tuple[float, float], ...] = ()
     colors: tuple[tuple[int, int, int], ...] = ()
     is_quad: bool = False
+    clut: int = 0
 
 
 @dataclass
@@ -45,13 +46,14 @@ class BoneMesh:
     def face_count(self) -> int:
         return len(self.faces)
 
-    def get_triangulated_indices_and_uvs(self) -> tuple[np.ndarray, np.ndarray]:
-        """Returns triangulated face indices (M, 3) and corresponding UVs (M, 3, 2).
+    def get_triangulated_data(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Returns triangulated face indices (M, 3), UVs (M, 3, 2), and CLUT IDs (M,).
         
-        Quads (v0, v1, v2, v3) are split into two triangles: (v0, v1, v2) and (v0, v2, v3).
+        Quads (v0, v1, v2, v3) are split into two triangles: (0, 1, 2) and (1, 3, 2).
         """
         tris: list[tuple[int, int, int]] = []
         uv_list: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float]]] = []
+        clut_list: list[int] = []
 
         for f in self.faces:
             if f.is_quad:
@@ -62,6 +64,7 @@ class BoneMesh:
                     uv_list.append((f.uvs[0], f.uvs[1], f.uvs[2]))
                 else:
                     uv_list.append(((0.0, 0.0), (0.0, 0.0), (0.0, 0.0)))
+                clut_list.append(f.clut)
 
                 # Triangle 2: (1, 3, 2)
                 tris.append((f.vertex_indices[1], f.vertex_indices[3], f.vertex_indices[2]))
@@ -69,17 +72,28 @@ class BoneMesh:
                     uv_list.append((f.uvs[1], f.uvs[3], f.uvs[2]))
                 else:
                     uv_list.append(((0.0, 0.0), (0.0, 0.0), (0.0, 0.0)))
+                clut_list.append(f.clut)
             else:
                 tris.append((f.vertex_indices[0], f.vertex_indices[1], f.vertex_indices[2]))
                 if f.uvs and len(f.uvs) >= 3:
                     uv_list.append((f.uvs[0], f.uvs[1], f.uvs[2]))
                 else:
                     uv_list.append(((0.0, 0.0), (0.0, 0.0), (0.0, 0.0)))
+                clut_list.append(f.clut)
 
         return (
             np.array(tris, dtype=np.uint32) if tris else np.empty((0, 3), dtype=np.uint32),
             np.array(uv_list, dtype=np.float32) if uv_list else np.empty((0, 3, 2), dtype=np.float32),
+            np.array(clut_list, dtype=np.uint32) if clut_list else np.empty((0,), dtype=np.uint32),
         )
+
+    def get_triangulated_indices_and_uvs(self) -> tuple[np.ndarray, np.ndarray]:
+        """Returns triangulated face indices (M, 3) and corresponding UVs (M, 3, 2).
+        
+        Quads (v0, v1, v2, v3) are split into two triangles: (0, 1, 2) and (1, 3, 2).
+        """
+        tris, uvs, _ = self.get_triangulated_data()
+        return tris, uvs
 
 
 @dataclass
@@ -326,6 +340,7 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                             w0, w1, w2, w3 = struct.unpack_from("<4I", data, data_ptr)
                             u0, u1, u2, u3 = struct.unpack_from("<4I", data, data_ptr + 16)
                             data_ptr += 32
+                            clut = u0 >> 16
 
                             v0 = ((w0 >> 16) // 8) + vert_base_idx
                             v1 = ((w1 >> 16) // 8) + vert_base_idx
@@ -338,7 +353,12 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                             uv3 = ((u3 & 0xFF) / 256.0, ((u3 >> 8) & 0xFF) / 256.0)
 
                             all_faces.append(
-                                PolygonFace(vertex_indices=(v0, v1, v2, v3), uvs=(uv0, uv1, uv2, uv3), is_quad=True)
+                                PolygonFace(
+                                    vertex_indices=(v0, v1, v2, v3),
+                                    uvs=(uv0, uv1, uv2, uv3),
+                                    is_quad=True,
+                                    clut=clut,
+                                )
                             )
 
                             for k in range(1, strip_len):
@@ -357,6 +377,8 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                                     else:
                                         v0, v1 = va, vb
                                         uv0, uv1 = uva, uvb
+                                        if (ua >> 16) != 0:
+                                            clut = ua >> 16
                                 else:
                                     # Fan: V0 anchor stays, V1/V2 alternate with V3
                                     if k % 2 == 1:
@@ -367,13 +389,19 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                                         uv1, uv3 = uva, uvb
 
                                 all_faces.append(
-                                    PolygonFace(vertex_indices=(v0, v1, v2, v3), uvs=(uv0, uv1, uv2, uv3), is_quad=True)
+                                    PolygonFace(
+                                        vertex_indices=(v0, v1, v2, v3),
+                                        uvs=(uv0, uv1, uv2, uv3),
+                                        is_quad=True,
+                                        clut=clut,
+                                    )
                                 )
 
                         elif textured and not is_quad:
                             w0, w1, w2 = struct.unpack_from("<3I", data, data_ptr)
                             u0, u1, u2 = struct.unpack_from("<3I", data, data_ptr + 12)
                             data_ptr += 24
+                            clut = u0 >> 16
 
                             v0 = ((w0 >> 16) // 8) + vert_base_idx
                             v1 = ((w1 >> 16) // 8) + vert_base_idx
@@ -384,7 +412,12 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                             uv2 = ((u2 & 0xFF) / 256.0, ((u2 >> 8) & 0xFF) / 256.0)
 
                             all_faces.append(
-                                PolygonFace(vertex_indices=(v0, v1, v2), uvs=(uv0, uv1, uv2), is_quad=False)
+                                PolygonFace(
+                                    vertex_indices=(v0, v1, v2),
+                                    uvs=(uv0, uv1, uv2),
+                                    is_quad=False,
+                                    clut=clut,
+                                )
                             )
 
                             for k in range(1, strip_len):
@@ -400,12 +433,19 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                                     if pass_idx != 0:
                                         v0 = va
                                         uv0 = uva
+                                        if (ua >> 16) != 0:
+                                            clut = ua >> 16
                                     else:
                                         v1 = va
                                         uv1 = uva
 
                                 all_faces.append(
-                                    PolygonFace(vertex_indices=(v0, v1, v2), uvs=(uv0, uv1, uv2), is_quad=False)
+                                    PolygonFace(
+                                        vertex_indices=(v0, v1, v2),
+                                        uvs=(uv0, uv1, uv2),
+                                        is_quad=False,
+                                        clut=clut,
+                                    )
                                 )
 
                         elif not textured and is_quad:
@@ -417,7 +457,7 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                             v2 = ((w2 >> 16) // 8) + vert_base_idx
                             v3 = ((w3 >> 16) // 8) + vert_base_idx
 
-                            all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2, v3), is_quad=True))
+                            all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2, v3), is_quad=True, clut=0))
 
                             for k in range(1, strip_len):
                                 wa, wb = struct.unpack_from("<2I", data, data_ptr)
@@ -436,7 +476,7 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                                     else:
                                         v1, v3 = va, vb
 
-                                all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2, v3), is_quad=True))
+                                all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2, v3), is_quad=True, clut=0))
 
                         else:
                             w0, w1, w2 = struct.unpack_from("<3I", data, data_ptr)
@@ -446,7 +486,7 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                             v1 = ((w1 >> 16) // 8) + vert_base_idx
                             v2 = ((w2 >> 16) // 8) + vert_base_idx
 
-                            all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2), is_quad=False))
+                            all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2), is_quad=False, clut=0))
 
                             for k in range(1, strip_len):
                                 wa = struct.unpack_from("<I", data, data_ptr)[0]
@@ -461,7 +501,7 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                                     else:
                                         v1 = va
 
-                                all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2), is_quad=False))
+                                all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2), is_quad=False, clut=0))
 
     v_arr = np.array(all_verts, dtype=np.float32) if all_verts else np.empty((0, 3), dtype=np.float32)
     n_arr = np.array(all_norms, dtype=np.float32) if all_norms else np.empty((0, 3), dtype=np.float32)
