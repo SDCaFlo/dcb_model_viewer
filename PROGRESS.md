@@ -55,6 +55,13 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
 ## 📝 Activity Log
 
 * **2026-10-24**:
+  * Corrected animation playback timing to authentic 60 Hz PSX hardware rate:
+    * In `dcb_decomp`, `runModelAnimationTask` steps every VBLANK (`waitFrames(1)`).
+    * Fixed `FPS = 60.0` in `dcb_viewer/formats/animation.py`, eliminating the 0.5× half-speed slowdown so animations now play at authentic full speed.
+  * Verified knee joint pattern on Magnamon:
+    * Inspected raw 4-bit TIM pixels at `X=67..82, Y=84..98`: confirmed the repeating yellow pixel marks are authentic hand-drawn golden knee crosshatch textures (`e c c f` on `8 6 7 7` blue) created by the game artist.
+    * Added interactive "Filter: Pixelated / Smooth" texture filtering toggle to the Web 3D Viewer toolbar.
+  * Batch re-exported all 267 models with updated 60 Hz animation timing.
   * Reverse-engineered multi-CLUT per-polygon palette architecture from `dcb_decomp` (`tmd_sort.c`, `gte.h`, `model_load.c`):
     * Each textured primitive packet in PSX GPU format stores its CLUT attribute in `u0 >> 16` (and TPAGE in `u1 >> 16`).
     * Established exact mathematical formula for palette bank indexing: `palette_index = (clut >> 6) - tim.clut_y`.

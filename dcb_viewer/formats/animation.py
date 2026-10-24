@@ -26,7 +26,7 @@ from typing import Sequence
 # PSX GTE Angle: 4096 units = 360 degrees = 2 * PI radians
 ANGLE_TO_RAD = (2.0 * math.pi) / 4096.0
 SCALE_DIVISOR = 4096.0  # 0x1000 = 1.0x scale
-FPS = 30.0  # PSX standard simulation frame rate
+FPS = 60.0  # PSX NTSC hardware tick rate (runModelAnimationTask runs at 60 Hz VBlank interval)
 
 
 @dataclass

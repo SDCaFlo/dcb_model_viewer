@@ -450,6 +450,7 @@
 
     <!-- Top Right Viewport Tools -->
     <div class="top-right-toolbar">
+      <button class="tool-btn" id="btnToggleTexture">Filter: Pixelated</button>
       <button class="tool-btn" id="btnToggleWire">Wireframe</button>
       <button class="tool-btn" id="btnToggleBones">Bones</button>
       <button class="tool-btn" id="btnToggleGrid">Grid</button>
@@ -506,6 +507,7 @@
     let gridHelper = null;
     let skeletonHelper = null;
     let wireframeEnabled = false;
+    let smoothTexture = false;
 
     // Elements
     const canvas = document.getElementById('canvas3d');
@@ -523,6 +525,7 @@
     const timeSlider = document.getElementById('timeSlider');
     const timeLabel = document.getElementById('timeLabel');
     const speedSelect = document.getElementById('speedSelect');
+    const btnToggleTexture = document.getElementById('btnToggleTexture');
     const btnToggleWire = document.getElementById('btnToggleWire');
     const btnToggleBones = document.getElementById('btnToggleBones');
     const btnToggleGrid = document.getElementById('btnToggleGrid');
@@ -600,6 +603,13 @@
       timeSlider.addEventListener('input', onTimelineScrub);
       speedSelect.addEventListener('change', (e) => {
         if (mixer) mixer.timeScale = parseFloat(e.target.value);
+      });
+
+      btnToggleTexture.addEventListener('click', () => {
+        smoothTexture = !smoothTexture;
+        btnToggleTexture.textContent = smoothTexture ? 'Filter: Smooth' : 'Filter: Pixelated';
+        btnToggleTexture.classList.toggle('active', smoothTexture);
+        applyTextureFilter();
       });
 
       btnToggleWire.addEventListener('click', () => {
@@ -681,6 +691,23 @@
       renderModelList(filtered);
     }
 
+    function applyTextureFilter() {
+      if (!currentModel) return;
+      currentModel.traverse((node) => {
+        if (node.isMesh && node.material) {
+          const mats = Array.isArray(node.material) ? node.material : [node.material];
+          mats.forEach((m) => {
+            if (m.map) {
+              m.map.magFilter = smoothTexture ? THREE.LinearFilter : THREE.NearestFilter;
+              m.map.minFilter = smoothTexture ? THREE.LinearMipmapLinearFilter : THREE.NearestFilter;
+              m.map.generateMipmaps = smoothTexture;
+              m.map.needsUpdate = true;
+            }
+          });
+        }
+      });
+    }
+
     async function selectModel(modelMeta) {
       document.querySelectorAll('.model-item').forEach(el => {
         el.classList.toggle('active', el.dataset.id === modelMeta.id);
@@ -708,6 +735,7 @@
           });
 
           scene.add(currentModel);
+          applyTextureFilter();
 
           // Stats calculation
           let totalVerts = 0;

@@ -24,7 +24,8 @@ def test_parse_agumon_idle_animation():
     assert clip.clip_id == 0
     assert clip.keyframe_count == 6
     assert clip.total_frames == 96
-    assert pytest.approx(clip.total_duration_seconds, 0.01) == 3.20
+    # 96 frames at 60 Hz NTSC simulation rate = 1.60 seconds
+    assert pytest.approx(clip.total_duration_seconds, 0.01) == 1.60
     assert clip.loop_key == -1
 
     # Verify quaternion math
