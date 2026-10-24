@@ -55,17 +55,18 @@ class BoneMesh:
 
         for f in self.faces:
             if f.is_quad:
-                # Triangle 1: (0, 1, 2)
+                # PSX quad triangulation: (0, 1, 2) and (1, 3, 2)
+                # Matches PSX GPU POLY_FT4 / POLY_GT4 rasterizer winding order and normal consistency
                 tris.append((f.vertex_indices[0], f.vertex_indices[1], f.vertex_indices[2]))
                 if f.uvs and len(f.uvs) >= 4:
                     uv_list.append((f.uvs[0], f.uvs[1], f.uvs[2]))
                 else:
                     uv_list.append(((0.0, 0.0), (0.0, 0.0), (0.0, 0.0)))
 
-                # Triangle 2: (0, 2, 3)
-                tris.append((f.vertex_indices[0], f.vertex_indices[2], f.vertex_indices[3]))
+                # Triangle 2: (1, 3, 2)
+                tris.append((f.vertex_indices[1], f.vertex_indices[3], f.vertex_indices[2]))
                 if f.uvs and len(f.uvs) >= 4:
-                    uv_list.append((f.uvs[0], f.uvs[2], f.uvs[3]))
+                    uv_list.append((f.uvs[1], f.uvs[3], f.uvs[2]))
                 else:
                     uv_list.append(((0.0, 0.0), (0.0, 0.0), (0.0, 0.0)))
             else:
@@ -299,7 +300,7 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
             part_norms = part_norms[:vert_count]
         all_norms.extend(part_norms)
 
-        # Read primitive packets (sortModelPrimitives)
+        # Read primitive packets (sortModelPrimitives from tmd_sort.c)
         while True:
             header = struct.unpack_from("<I", data, data_ptr)[0]
             data_ptr += 4
@@ -313,79 +314,154 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
             textured = bool(code & 0x04000000)
 
             for pass_idx in range(2):
-                pass_count = count0 if pass_idx == 0 else count1
-                while pass_count > 0:
-                    word = struct.unpack_from("<I", data, data_ptr)[0]
+                run_cnt = count0 if pass_idx == 0 else count1
+                for _ in range(run_cnt):
+                    run_w = struct.unpack_from("<I", data, data_ptr)[0]
                     data_ptr += 4
-                    strip_count = word & 0xFFFF
-                    strip_len = word >> 16
-                    pass_count -= 1
+                    strip_cnt = run_w & 0xFFFF
+                    strip_len = run_w >> 16
 
-                    for _ in range(strip_count):
-                        word = struct.unpack_from("<I", data, data_ptr)[0]
+                    for _ in range(strip_cnt):
+                        if textured and is_quad:
+                            w0, w1, w2, w3 = struct.unpack_from("<4I", data, data_ptr)
+                            u0, u1, u2, u3 = struct.unpack_from("<4I", data, data_ptr + 16)
+                            data_ptr += 32
 
-                        # Primitive 0
-                        idx0 = ((word >> 16) // 8) + vert_base_idx
-                        idx1 = ((struct.unpack_from("<I", data, data_ptr + 4)[0] >> 16) // 8) + vert_base_idx
-                        idx2 = ((struct.unpack_from("<I", data, data_ptr + 8)[0] >> 16) // 8) + vert_base_idx
+                            v0 = ((w0 >> 16) // 8) + vert_base_idx
+                            v1 = ((w1 >> 16) // 8) + vert_base_idx
+                            v2 = ((w2 >> 16) // 8) + vert_base_idx
+                            v3 = ((w3 >> 16) // 8) + vert_base_idx
 
-                        if is_quad:
-                            idx3 = ((struct.unpack_from("<I", data, data_ptr + 12)[0] >> 16) // 8) + vert_base_idx
-                            uvs: list[tuple[float, float]] = []
-                            if textured:
-                                uv0_raw = struct.unpack_from("<I", data, data_ptr + 16)[0]
-                                uv1_raw = struct.unpack_from("<I", data, data_ptr + 20)[0]
-                                uv2_raw = struct.unpack_from("<I", data, data_ptr + 24)[0]
-                                uv3_raw = struct.unpack_from("<I", data, data_ptr + 28)[0]
-                                for raw in (uv0_raw, uv1_raw, uv2_raw, uv3_raw):
-                                    uvs.append(((raw & 0xFF) / 256.0, ((raw >> 8) & 0xFF) / 256.0))
-                            all_faces.append(PolygonFace(vertex_indices=(idx0, idx1, idx2, idx3), uvs=tuple(uvs), is_quad=True))
-                            data_ptr += 32 if textured else 16
-                            extra_step = 16 if textured else 8
+                            uv0 = ((u0 & 0xFF) / 256.0, ((u0 >> 8) & 0xFF) / 256.0)
+                            uv1 = ((u1 & 0xFF) / 256.0, ((u1 >> 8) & 0xFF) / 256.0)
+                            uv2 = ((u2 & 0xFF) / 256.0, ((u2 >> 8) & 0xFF) / 256.0)
+                            uv3 = ((u3 & 0xFF) / 256.0, ((u3 >> 8) & 0xFF) / 256.0)
+
+                            all_faces.append(
+                                PolygonFace(vertex_indices=(v0, v1, v2, v3), uvs=(uv0, uv1, uv2, uv3), is_quad=True)
+                            )
+
+                            for k in range(1, strip_len):
+                                wa, wb, ua, ub = struct.unpack_from("<4I", data, data_ptr)
+                                data_ptr += 16
+                                va = ((wa >> 16) // 8) + vert_base_idx
+                                vb = ((wb >> 16) // 8) + vert_base_idx
+                                uva = ((ua & 0xFF) / 256.0, ((ua >> 8) & 0xFF) / 256.0)
+                                uvb = ((ub & 0xFF) / 256.0, ((ub >> 8) & 0xFF) / 256.0)
+
+                                if pass_idx != 0:
+                                    # Strip: alternating edge replacement
+                                    if k % 2 == 1:
+                                        v2, v3 = va, vb
+                                        uv2, uv3 = uva, uvb
+                                    else:
+                                        v0, v1 = va, vb
+                                        uv0, uv1 = uva, uvb
+                                else:
+                                    # Fan: V0 anchor stays, V1/V2 alternate with V3
+                                    if k % 2 == 1:
+                                        v2, v3 = va, vb
+                                        uv2, uv3 = uva, uvb
+                                    else:
+                                        v1, v3 = va, vb
+                                        uv1, uv3 = uva, uvb
+
+                                all_faces.append(
+                                    PolygonFace(vertex_indices=(v0, v1, v2, v3), uvs=(uv0, uv1, uv2, uv3), is_quad=True)
+                                )
+
+                        elif textured and not is_quad:
+                            w0, w1, w2 = struct.unpack_from("<3I", data, data_ptr)
+                            u0, u1, u2 = struct.unpack_from("<3I", data, data_ptr + 12)
+                            data_ptr += 24
+
+                            v0 = ((w0 >> 16) // 8) + vert_base_idx
+                            v1 = ((w1 >> 16) // 8) + vert_base_idx
+                            v2 = ((w2 >> 16) // 8) + vert_base_idx
+
+                            uv0 = ((u0 & 0xFF) / 256.0, ((u0 >> 8) & 0xFF) / 256.0)
+                            uv1 = ((u1 & 0xFF) / 256.0, ((u1 >> 8) & 0xFF) / 256.0)
+                            uv2 = ((u2 & 0xFF) / 256.0, ((u2 >> 8) & 0xFF) / 256.0)
+
+                            all_faces.append(
+                                PolygonFace(vertex_indices=(v0, v1, v2), uvs=(uv0, uv1, uv2), is_quad=False)
+                            )
+
+                            for k in range(1, strip_len):
+                                wa, ua = struct.unpack_from("<2I", data, data_ptr)
+                                data_ptr += 8
+                                va = ((wa >> 16) // 8) + vert_base_idx
+                                uva = ((ua & 0xFF) / 256.0, ((ua >> 8) & 0xFF) / 256.0)
+
+                                if k % 2 == 1:
+                                    v2 = va
+                                    uv2 = uva
+                                else:
+                                    if pass_idx != 0:
+                                        v0 = va
+                                        uv0 = uva
+                                    else:
+                                        v1 = va
+                                        uv1 = uva
+
+                                all_faces.append(
+                                    PolygonFace(vertex_indices=(v0, v1, v2), uvs=(uv0, uv1, uv2), is_quad=False)
+                                )
+
+                        elif not textured and is_quad:
+                            w0, w1, w2, w3 = struct.unpack_from("<4I", data, data_ptr)
+                            data_ptr += 16
+
+                            v0 = ((w0 >> 16) // 8) + vert_base_idx
+                            v1 = ((w1 >> 16) // 8) + vert_base_idx
+                            v2 = ((w2 >> 16) // 8) + vert_base_idx
+                            v3 = ((w3 >> 16) // 8) + vert_base_idx
+
+                            all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2, v3), is_quad=True))
+
+                            for k in range(1, strip_len):
+                                wa, wb = struct.unpack_from("<2I", data, data_ptr)
+                                data_ptr += 8
+                                va = ((wa >> 16) // 8) + vert_base_idx
+                                vb = ((wb >> 16) // 8) + vert_base_idx
+
+                                if pass_idx != 0:
+                                    if k % 2 == 1:
+                                        v2, v3 = va, vb
+                                    else:
+                                        v0, v1 = va, vb
+                                else:
+                                    if k % 2 == 1:
+                                        v2, v3 = va, vb
+                                    else:
+                                        v1, v3 = va, vb
+
+                                all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2, v3), is_quad=True))
+
                         else:
-                            uvs = []
-                            if textured:
-                                uv0_raw = struct.unpack_from("<I", data, data_ptr + 12)[0]
-                                uv1_raw = struct.unpack_from("<I", data, data_ptr + 16)[0]
-                                uv2_raw = struct.unpack_from("<I", data, data_ptr + 20)[0]
-                                for raw in (uv0_raw, uv1_raw, uv2_raw):
-                                    uvs.append(((raw & 0xFF) / 256.0, ((raw >> 8) & 0xFF) / 256.0))
-                            all_faces.append(PolygonFace(vertex_indices=(idx0, idx1, idx2), uvs=tuple(uvs), is_quad=False))
-                            data_ptr += 24 if textured else 12
-                            extra_step = 8 if textured else 4
+                            w0, w1, w2 = struct.unpack_from("<3I", data, data_ptr)
+                            data_ptr += 12
 
-                        # Strip continuation
-                        last_idx0 = idx1
-                        last_idx1 = idx2
-                        for k in range(strip_len - 1):
-                            next_word = struct.unpack_from("<I", data, data_ptr)[0]
-                            next_idx = ((next_word >> 16) // 8) + vert_base_idx
-                            next_uvs: list[tuple[float, float]] = []
-                            if textured:
-                                raw_uv = struct.unpack_from("<I", data, data_ptr + 4)[0]
-                                next_uvs = [
-                                    ((raw_uv & 0xFF) / 256.0, ((raw_uv >> 8) & 0xFF) / 256.0)
-                                ] * (4 if is_quad else 3)
+                            v0 = ((w0 >> 16) // 8) + vert_base_idx
+                            v1 = ((w1 >> 16) // 8) + vert_base_idx
+                            v2 = ((w2 >> 16) // 8) + vert_base_idx
 
-                            if is_quad:
-                                all_faces.append(
-                                    PolygonFace(
-                                        vertex_indices=(idx0, last_idx0, last_idx1, next_idx),
-                                        uvs=tuple(next_uvs),
-                                        is_quad=True,
-                                    )
-                                )
-                            else:
-                                all_faces.append(
-                                    PolygonFace(
-                                        vertex_indices=(last_idx0, last_idx1, next_idx),
-                                        uvs=tuple(next_uvs),
-                                        is_quad=False,
-                                    )
-                                )
-                            last_idx0 = last_idx1
-                            last_idx1 = next_idx
-                            data_ptr += extra_step
+                            all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2), is_quad=False))
+
+                            for k in range(1, strip_len):
+                                wa = struct.unpack_from("<I", data, data_ptr)[0]
+                                data_ptr += 4
+                                va = ((wa >> 16) // 8) + vert_base_idx
+
+                                if k % 2 == 1:
+                                    v2 = va
+                                else:
+                                    if pass_idx != 0:
+                                        v0 = va
+                                    else:
+                                        v1 = va
+
+                                all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2), is_quad=False))
 
     v_arr = np.array(all_verts, dtype=np.float32) if all_verts else np.empty((0, 3), dtype=np.float32)
     n_arr = np.array(all_norms, dtype=np.float32) if all_norms else np.empty((0, 3), dtype=np.float32)

@@ -104,4 +104,11 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
       2. **Column-Major Matrix Layout**: glTF `MAT4` accessors mandate column-major order. NumPy C-contiguous matrices were packed row-major, causing translation vectors to be read as the bottom row ($w$-row) and skewing perspective projections. Resolved by storing matrices transposed (`ascontiguousarray(inv_m.T)`).
       3. **Bone Translation Channels**: Added animation channels for bones animating translation (`[(bx + tx) * scale, -(by + ty) * scale, -(bz + tz) * scale]`), enabling character breathing, jumping, and vertical translation offsets.
     * Re-exported all 267 Digimon GLB models with the fixes applied. Tested and verified clean, natural animations across models.
+  * **Mesh Topology & Texture Alignment Breakthrough**:
+    * Diagnosed and fixed the core reasons models appeared "messy":
+      1. **Quad Triangulation Normal Inversion**: Previously, quads $(v_0, v_1, v_2, v_3)$ were split into $(0, 1, 2)$ and $(0, 2, 3)$, which flipped the normal of the second triangle by 180° ($\vec{n}_1 \cdot \vec{n}_2 \approx -1.0$). Fixed to match PSX GPU `POLY_FT4` rasterization: $(0, 1, 2)$ and $(1, 3, 2)$ ($\vec{n}_1 \cdot \vec{n}_2 \approx +1.0$), ensuring uniform outward-facing normals and eliminating black/inverted face shading.
+      2. **Decomp-Accurate Strip & Fan Continuation**: Fully implemented `sortModelPrimitives` logic from `external_repository/dcb_decomp/src/main/gfx/tmd_sort.c` for multi-primitive runs (145/400 strips have length > 1), fixing edge-alternation and V0 fan-anchors for all 4 primitive types (textured/untextured quads & tris).
+      3. **256×256 VRAM Texture Page Alignment**: Model UV coordinates $(U/256, V/256)$ index into a full 256×256 PSX VRAM page, while TIM files on disc are cropped (e.g. 256×136, 232×112, 56×88). Padded textures onto a standard 256×256 canvas in `gltf.py`, restoring 1:1 sub-pixel UV alignment.
+      4. **glTF Alpha Cutout Masking**: Added `"alphaMode": "MASK"` with cutoff 0.1 to cleanly discard transparent VRAM pixels without black fringes or alpha-sorting artifacts.
+    * Re-exported all 267 Digimon GLB models with clean topology and aligned textures.
   * **Phase 2 (3D Web Visualization) is 100% complete!**

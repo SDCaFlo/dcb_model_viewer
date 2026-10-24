@@ -138,11 +138,19 @@ class GlbBuilder:
         })
         return tex_idx
 
-    def add_material(self, texture_idx: int | None = None, name: str = "Material") -> int:
+    def add_material(
+        self,
+        texture_idx: int | None = None,
+        name: str = "Material",
+        alpha_mode: str = "MASK",
+        alpha_cutoff: float = 0.1,
+    ) -> int:
         mat_idx = len(self.materials)
         mat_dict: dict = {
             "name": name,
             "doubleSided": True,
+            "alphaMode": alpha_mode,
+            "alphaCutoff": alpha_cutoff,
             "pbrMetallicRoughness": {
                 "metallicFactor": 0.0,
                 "roughnessFactor": 0.8,
@@ -235,6 +243,14 @@ def export_model_to_glb(
     mat_idx = None
     if texture is not None:
         pil_img = texture.to_rgba_image(palette_idx=palette_idx)
+        # PSX model UVs are referenced against a 256x256 VRAM texture page.
+        # TIM files on disc are cropped to only the rows/columns in use.
+        # Placing the TIM pixels onto a 256x256 canvas ensures UVs match 1:1 without squashing.
+        if pil_img.size != (256, 256):
+            canvas = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
+            canvas.paste(pil_img, (0, 0))
+            pil_img = canvas
+
         png_io = io.BytesIO()
         pil_img.save(png_io, format="PNG")
         tex_idx = builder.add_texture_png(png_io.getvalue())
