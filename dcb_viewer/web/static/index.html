@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Digimon Card Battle - 3D Model & Animation Viewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0b0f17;
+      --bg-panel: rgba(16, 22, 34, 0.85);
+      --bg-panel-border: rgba(0, 229, 255, 0.2);
+      --accent-cyan: #00e5ff;
+      --accent-orange: #ff9100;
+      --accent-green: #00e676;
+      --text-main: #e0f2fe;
+      --text-muted: #94a3b8;
+      --text-bright: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      font-family: 'Chakra Petch', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+    }
+
+    /* Left Sidebar */
+    #sidebar {
+      width: 340px;
+      height: 100vh;
+      background: var(--bg-panel);
+      backdrop-filter: blur(16px);
+      border-right: 1px solid var(--bg-panel-border);
+      display: flex;
+      flex-direction: column;
+      z-index: 20;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    #sidebar.collapsed {
+      transform: translateX(-100%);
+    }
+
+    .sidebar-header {
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--text-bright);
+    }
+
+    .brand-tag {
+      font-size: 0.65rem;
+      background: linear-gradient(135deg, var(--accent-cyan), #0091ea);
+      color: #000;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .sub-brand {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .search-box {
+      padding: 12px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .search-input {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(0, 229, 255, 0.2);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: var(--text-bright);
+      font-family: 'Chakra Petch', sans-serif;
+      font-size: 0.85rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
+    }
+
+    .model-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .model-list::-webkit-scrollbar {
+      width: 5px;
+    }
+    .model-list::-webkit-scrollbar-thumb {
+      background: rgba(0, 229, 255, 0.2);
+      border-radius: 3px;
+    }
+
+    .model-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid transparent;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .model-item:hover {
+      background: rgba(0, 229, 255, 0.06);
+      border-color: rgba(0, 229, 255, 0.25);
+      transform: translateX(2px);
+    }
+
+    .model-item.active {
+      background: rgba(0, 229, 255, 0.12);
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 12px rgba(0, 229, 255, 0.15);
+    }
+
+    .model-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .model-name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-bright);
+    }
+
+    .model-meta {
+      font-size: 0.72rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-muted);
+    }
+
+    .model-badge {
+      font-size: 0.65rem;
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 3px 6px;
+      border-radius: 4px;
+      color: var(--accent-cyan);
+    }
+
+    /* 3D Viewport */
+    #viewport-container {
+      flex: 1;
+      height: 100vh;
+      position: relative;
+    }
+
+    #canvas3d {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Floating UI Top-Left */
+    .top-left-panel {
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .model-header-card {
+      pointer-events: auto;
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--bg-panel-border);
+      border-radius: 8px;
+      padding: 12px 18px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+
+    .active-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      text-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
+    }
+
+    .stats-row {
+      display: flex;
+      gap: 14px;
+      margin-top: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .stats-item span {
+      color: var(--text-bright);
+      font-weight: 600;
+    }
+
+    /* Floating Top-Right Toolbar */
+    .top-right-toolbar {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    .tool-btn {
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--bg-panel-border);
+      color: var(--text-main);
+      padding: 8px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'Chakra Petch', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .tool-btn:hover {
+      background: rgba(0, 229, 255, 0.15);
+      border-color: var(--accent-cyan);
+      color: var(--text-bright);
+    }
+
+    .tool-btn.active {
+      background: var(--accent-cyan);
+      color: #000;
+      border-color: var(--accent-cyan);
+    }
+
+    /* Bottom Animation Controller */
+    .bottom-bar {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 60px);
+      max-width: 880px;
+      background: var(--bg-panel);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--bg-panel-border);
+      border-radius: 12px;
+      padding: 14px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.6);
+      z-index: 10;
+    }
+
+    .anim-clips-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    .clip-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-muted);
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+
+    .clip-btn:hover {
+      color: var(--text-bright);
+      border-color: rgba(0, 229, 255, 0.3);
+    }
+
+    .clip-btn.active {
+      background: rgba(0, 229, 255, 0.15);
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      box-shadow: 0 0 10px rgba(0, 229, 255, 0.2);
+    }
+
+    .controls-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .play-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+      border: none;
+      color: #000;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .play-btn:hover {
+      transform: scale(1.06);
+      box-shadow: 0 0 16px rgba(0, 229, 255, 0.5);
+    }
+
+    .timeline-slider {
+      flex: 1;
+      accent-color: var(--accent-cyan);
+      height: 6px;
+      cursor: pointer;
+    }
+
+    .time-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      min-width: 95px;
+      text-align: right;
+    }
+
+    .speed-select {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text-bright);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      outline: none;
+      cursor: pointer;
+    }
+
+    /* Loading Overlay */
+    #loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(11, 15, 23, 0.75);
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      z-index: 50;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    #loading-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 3px solid rgba(0, 229, 255, 0.2);
+      border-top-color: var(--accent-cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Left Sidebar -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <div class="brand">
+        <span>DCB 3D VIEWER</span>
+        <span class="brand-tag">PSX</span>
+      </div>
+      <div class="sub-brand">Digimon Digital Card Battle (SLUS-01328)</div>
+    </div>
+    <div class="search-box">
+      <input type="text" id="searchInput" class="search-input" placeholder="Search Digimon by name or ID...">
+    </div>
+    <div class="model-list" id="modelList">
+      <!-- Populated dynamically via /api/models -->
+    </div>
+  </aside>
+
+  <!-- 3D Viewport -->
+  <main id="viewport-container">
+    <canvas id="canvas3d"></canvas>
+
+    <!-- Top Left Model Card -->
+    <div class="top-left-panel">
+      <div class="model-header-card">
+        <h1 class="active-title" id="activeModelTitle">Select a Digimon</h1>
+        <div class="stats-row">
+          <div class="stats-item">ID: <span id="statId">-</span></div>
+          <div class="stats-item">Bones: <span id="statBones">-</span></div>
+          <div class="stats-item">Vertices: <span id="statVerts">-</span></div>
+          <div class="stats-item">Faces: <span id="statFaces">-</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top Right Viewport Tools -->
+    <div class="top-right-toolbar">
+      <button class="tool-btn" id="btnToggleWire">Wireframe</button>
+      <button class="tool-btn" id="btnToggleBones">Bones</button>
+      <button class="tool-btn" id="btnToggleGrid">Grid</button>
+      <button class="tool-btn" id="btnResetCamera">Reset View</button>
+    </div>
+
+    <!-- Bottom Animation Controller -->
+    <div class="bottom-bar" id="animController" style="display: none;">
+      <div class="anim-clips-row" id="clipsContainer">
+        <!-- Animation clip buttons -->
+      </div>
+      <div class="controls-row">
+        <button class="play-btn" id="btnPlayPause">⏸</button>
+        <input type="range" class="timeline-slider" id="timeSlider" min="0" max="100" value="0" step="0.1">
+        <div class="time-label" id="timeLabel">0.00s / 0.00s</div>
+        <select class="speed-select" id="speedSelect">
+          <option value="0.25">0.25x</option>
+          <option value="0.5">0.5x</option>
+          <option value="1.0" selected>1.0x</option>
+          <option value="2.0">2.0x</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
+      <div class="spinner"></div>
+      <div style="font-weight: 600; color: var(--accent-cyan);">Loading Digimon 3D Model...</div>
+    </div>
+  </main>
+
+  <!-- Three.js via ES Modules -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    // Application State
+    let scene, camera, renderer, controls, clock;
+    let currentModel = null;
+    let mixer = null;
+    let activeAction = null;
+    let currentAnimations = [];
+    let isPlaying = true;
+    let gridHelper = null;
+    let skeletonHelper = null;
+    let wireframeEnabled = false;
+
+    // Elements
+    const canvas = document.getElementById('canvas3d');
+    const modelList = document.getElementById('modelList');
+    const searchInput = document.getElementById('searchInput');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const activeModelTitle = document.getElementById('activeModelTitle');
+    const statId = document.getElementById('statId');
+    const statBones = document.getElementById('statBones');
+    const statVerts = document.getElementById('statVerts');
+    const statFaces = document.getElementById('statFaces');
+    const animController = document.getElementById('animController');
+    const clipsContainer = document.getElementById('clipsContainer');
+    const btnPlayPause = document.getElementById('btnPlayPause');
+    const timeSlider = document.getElementById('timeSlider');
+    const timeLabel = document.getElementById('timeLabel');
+    const speedSelect = document.getElementById('speedSelect');
+    const btnToggleWire = document.getElementById('btnToggleWire');
+    const btnToggleBones = document.getElementById('btnToggleBones');
+    const btnToggleGrid = document.getElementById('btnToggleGrid');
+    const btnResetCamera = document.getElementById('btnResetCamera');
+
+    let allModels = [];
+
+    // Initialize Three.js Scene
+    function init() {
+      clock = new THREE.Clock();
+
+      // Scene
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0b0f17);
+
+      // Camera
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.05, 100);
+      camera.position.set(0, 1.4, 3.5);
+
+      // Renderer
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+      renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.2;
+
+      // Controls
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.target.set(0, 0.9, 0);
+      controls.maxPolarAngle = Math.PI * 0.95;
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+      dirLight.position.set(3, 5, 4);
+      scene.add(dirLight);
+
+      const backLight = new THREE.DirectionalLight(0x00e5ff, 0.8);
+      backLight.position.set(-3, 3, -4);
+      scene.add(backLight);
+
+      // Grid Helper
+      gridHelper = new THREE.GridHelper(10, 20, 0x00e5ff, 0x1e293b);
+      gridHelper.position.y = 0;
+      scene.add(gridHelper);
+
+      // Resize listener
+      window.addEventListener('resize', onWindowResize);
+
+      // Setup UI handlers
+      setupUI();
+
+      // Fetch model catalog
+      loadCatalog();
+
+      // Start loop
+      animate();
+    }
+
+    function onWindowResize() {
+      const container = document.getElementById('viewport-container');
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+    function setupUI() {
+      btnPlayPause.addEventListener('click', togglePlayPause);
+      timeSlider.addEventListener('input', onTimelineScrub);
+      speedSelect.addEventListener('change', (e) => {
+        if (mixer) mixer.timeScale = parseFloat(e.target.value);
+      });
+
+      btnToggleWire.addEventListener('click', () => {
+        wireframeEnabled = !wireframeEnabled;
+        btnToggleWire.classList.toggle('active', wireframeEnabled);
+        if (currentModel) {
+          currentModel.traverse((node) => {
+            if (node.isMesh) node.material.wireframe = wireframeEnabled;
+          });
+        }
+      });
+
+      btnToggleBones.addEventListener('click', () => {
+        if (skeletonHelper) {
+          skeletonHelper.visible = !skeletonHelper.visible;
+          btnToggleBones.classList.toggle('active', skeletonHelper.visible);
+        }
+      });
+
+      btnToggleGrid.addEventListener('click', () => {
+        gridHelper.visible = !gridHelper.visible;
+        btnToggleGrid.classList.toggle('active', gridHelper.visible);
+      });
+      btnToggleGrid.classList.add('active');
+
+      btnResetCamera.addEventListener('click', resetCamera);
+
+      searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        filterCatalog(query);
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+          e.preventDefault();
+          togglePlayPause();
+        }
+      });
+    }
+
+    async function loadCatalog() {
+      try {
+        const res = await fetch('/api/models');
+        allModels = await res.json();
+        renderModelList(allModels);
+
+        // Load Agumon (003) by default if available
+        const defaultModel = allModels.find(m => m.id === '003') || allModels[0];
+        if (defaultModel) {
+          selectModel(defaultModel);
+        }
+      } catch (err) {
+        console.error('Failed to load model catalog:', err);
+      }
+    }
+
+    function renderModelList(models) {
+      modelList.innerHTML = '';
+      models.forEach(m => {
+        const item = document.createElement('div');
+        item.className = 'model-item';
+        item.dataset.id = m.id;
+        item.innerHTML = `
+          <div class="model-info">
+            <div class="model-name">${m.name}</div>
+            <div class="model-meta">ID: #${m.id}</div>
+          </div>
+          <span class="model-badge">${m.anim_count > 0 ? `${m.anim_count} ANIMS` : 'STATIC'}</span>
+        `;
+        item.addEventListener('click', () => selectModel(m));
+        modelList.appendChild(item);
+      });
+    }
+
+    function filterCatalog(query) {
+      const filtered = allModels.filter(m => 
+        m.name.toLowerCase().includes(query) || m.id.toLowerCase().includes(query)
+      );
+      renderModelList(filtered);
+    }
+
+    async function selectModel(modelMeta) {
+      document.querySelectorAll('.model-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.id === modelMeta.id);
+      });
+
+      loadingOverlay.classList.add('visible');
+      activeModelTitle.textContent = modelMeta.name;
+      statId.textContent = `#${modelMeta.id}`;
+
+      const loader = new GLTFLoader();
+      loader.load(
+        `/models/${modelMeta.filename}`,
+        (gltf) => {
+          if (currentModel) scene.remove(currentModel);
+          if (skeletonHelper) scene.remove(skeletonHelper);
+          if (mixer) mixer.stopAllAction();
+
+          currentModel = gltf.scene;
+
+          // Wireframe state application
+          currentModel.traverse((node) => {
+            if (node.isMesh) {
+              node.material.wireframe = wireframeEnabled;
+            }
+          });
+
+          scene.add(currentModel);
+
+          // Stats calculation
+          let totalVerts = 0;
+          let totalTris = 0;
+          let bonesCount = 0;
+
+          currentModel.traverse((node) => {
+            if (node.isMesh && node.geometry) {
+              totalVerts += node.geometry.attributes.position.count;
+              if (node.geometry.index) {
+                totalTris += node.geometry.index.count / 3;
+              }
+            }
+            if (node.isBone) bonesCount++;
+          });
+
+          statBones.textContent = bonesCount;
+          statVerts.textContent = totalVerts.toLocaleString();
+          statFaces.textContent = totalTris.toLocaleString();
+
+          // Skeleton Helper
+          skeletonHelper = new THREE.SkeletonHelper(currentModel);
+          skeletonHelper.visible = btnToggleBones.classList.contains('active');
+          scene.add(skeletonHelper);
+
+          // Animations setup
+          currentAnimations = gltf.animations || [];
+          if (currentAnimations.length > 0) {
+            animController.style.display = 'flex';
+            mixer = new THREE.AnimationMixer(currentModel);
+            mixer.timeScale = parseFloat(speedSelect.value);
+            setupAnimationClips(currentAnimations);
+          } else {
+            animController.style.display = 'none';
+          }
+
+          resetCamera();
+          loadingOverlay.classList.remove('visible');
+        },
+        undefined,
+        (err) => {
+          console.error('Failed to load GLB:', err);
+          loadingOverlay.classList.remove('visible');
+        }
+      );
+    }
+
+    function setupAnimationClips(clips) {
+      clipsContainer.innerHTML = '';
+      clips.forEach((clip, idx) => {
+        const btn = document.createElement('button');
+        btn.className = `clip-btn ${idx === 0 ? 'active' : ''}`;
+        btn.textContent = clip.name;
+        btn.addEventListener('click', () => playClip(clip, btn));
+        clipsContainer.appendChild(btn);
+      });
+
+      if (clips.length > 0) {
+        playClip(clips[0], clipsContainer.firstChild);
+      }
+    }
+
+    function playClip(clip, activeBtn) {
+      document.querySelectorAll('.clip-btn').forEach(b => b.classList.remove('active'));
+      if (activeBtn) activeBtn.classList.add('active');
+
+      if (activeAction) activeAction.stop();
+
+      activeAction = mixer.clipAction(clip);
+      activeAction.reset().play();
+      isPlaying = true;
+      btnPlayPause.textContent = '⏸';
+
+      timeSlider.max = clip.duration;
+      timeSlider.value = 0;
+    }
+
+    function togglePlayPause() {
+      if (!activeAction) return;
+      isPlaying = !isPlaying;
+      activeAction.paused = !isPlaying;
+      btnPlayPause.textContent = isPlaying ? '⏸' : '▶';
+    }
+
+    function onTimelineScrub(e) {
+      if (!activeAction) return;
+      const t = parseFloat(e.target.value);
+      activeAction.time = t;
+      mixer.update(0);
+    }
+
+    function resetCamera() {
+      if (!currentModel) return;
+      const box = new THREE.Box3().setFromObject(currentModel);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const fov = camera.fov * (Math.PI / 180);
+      let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.8;
+      cameraZ = Math.max(cameraZ, 2.5);
+
+      camera.position.set(center.x, center.y + size.y * 0.15, center.z + cameraZ);
+      controls.target.copy(center);
+      controls.update();
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = clock.getDelta();
+
+      if (mixer && isPlaying && activeAction) {
+        mixer.update(delta);
+        const curTime = activeAction.time % activeAction.getClip().duration;
+        timeSlider.value = curTime;
+        timeLabel.textContent = `${curTime.toFixed(2)}s / ${activeAction.getClip().duration.toFixed(2)}s`;
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    init();
+  </script>
+</body>
+</html>

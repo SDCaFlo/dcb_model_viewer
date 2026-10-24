@@ -271,6 +271,19 @@ def cmd_batch_export_gltf(args: argparse.Namespace) -> None:
     print(f"\nBatch export complete! Successfully exported {success}/{len(targets)} models to {output_dir}")
 
 
+def cmd_serve(args: argparse.Namespace) -> None:
+    """Launches the interactive Web 3D Viewer."""
+    from dcb_viewer.web.server import run_server
+
+    models_dir = Path(args.models_dir) if args.models_dir else None
+    run_server(
+        host=args.host,
+        port=args.port,
+        open_browser=not args.no_browser,
+        models_dir=models_dir,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="dcb-viewer",
@@ -316,6 +329,14 @@ def main() -> None:
     p_batch_gltf.add_argument("--scale", type=float, default=DEFAULT_SCALE, help="Metric scale multiplier (default 0.01)")
     p_batch_gltf.add_argument("--static", action="store_true", help="Export static mesh instead of rigged/animated")
     p_batch_gltf.set_defaults(func=cmd_batch_export_gltf)
+
+    # serve
+    p_serve = subparsers.add_parser("serve", help="Launch interactive Web 3D Viewer")
+    p_serve.add_argument("--port", type=int, default=8080, help="Web server port (default 8080)")
+    p_serve.add_argument("--host", default="127.0.0.1", help="Web server host (default 127.0.0.1)")
+    p_serve.add_argument("--models-dir", help="Directory containing .glb models (default original_iso/extracted/models)")
+    p_serve.add_argument("--no-browser", action="store_true", help="Do not automatically launch web browser")
+    p_serve.set_defaults(func=cmd_serve)
 
     args = parser.parse_args()
     args.func(args)

@@ -5,9 +5,9 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
 ---
 
 ## 📌 Current Status Summary
-* **Active Phase**: Phase 2 - Visualization (Interactive 3D Tool)
-* **Current Focus**: 3D Viewport Architecture & Desktop GUI
-* **Status**: 🟢 Phase 1 Complete (All 267 Digimon Models, Textures, and Skeletal Animations Successfully Extracted & Exported to glTF 2.0 / GLB)
+* **Active Phase**: Completed (Phase 1: Pipeline & glTF Export + Phase 2: Interactive Web 3D Viewer)
+* **Current Focus**: Polish, Additional Stages / Arenas, and User Enhancements
+* **Status**: 🟢 All Milestones Achieved (Full Extraction, 267 Digimon GLB Models, 8 Animation Tracks, and Web 3D Viewer Live)
 
 ---
 
@@ -35,11 +35,11 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
 
 | Task ID | Item | Status | Notes |
 | :--- | :--- | :---: | :--- |
-| **P2-01** | 3D Viewport Architecture | ⚪ Backlog | Interactive 3D canvas (orbit, pan, zoom, wireframe) |
-| **P2-02** | Shading & Material Pipeline | ⚪ Backlog | Support PSX-style unlit / vertex-lit / textured rendering |
-| **P2-03** | Animation Player UI | ⚪ Backlog | Timeline scrubber, playback speed, loop toggle |
-| **P2-04** | Asset Browser & Inspector | ⚪ Backlog | File tree for extracted Digimon, models, and textures |
-| **P2-05** | Standalone GUI Application | ⚪ Backlog | Unified desktop app (PySide6 / ModernGL) |
+| **P2-01** | 3D Viewport Architecture | 🟢 Done | Three.js WebGL viewport with OrbitControls, studio lighting, grid, wireframe, and bone helpers |
+| **P2-02** | Shading & Material Pipeline | 🟢 Done | glTF 2.0 PBR material with authentic PSX NEAREST texture filtering |
+| **P2-03** | Animation Player UI | 🟢 Done | Timeline scrubber, play/pause, playback speed chips (0.25x - 2x), and clip switcher |
+| **P2-04** | Asset Browser & Inspector | 🟢 Done | Digimon card database (`CARD2.CDD`) name resolution, search filter, and mesh stats |
+| **P2-05** | Standalone Web Application | 🟢 Done | Multi-threaded Python server (`dcb_viewer/web/server.py`) launched via `dcb-viewer serve` |
 
 ---
 
@@ -92,3 +92,10 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
   * Verified 11/11 unit and integration tests passing (`tests/test_gltf.py`, `tests/test_animation.py`).
   * Batch exported all **267/267 Digimon models** to `original_iso/extracted/models/*.glb` with a 100% success rate!
   * **Phase 1 (Model and Animation Extraction) is 100% complete!**
+  * Implemented Digimon card database parser in `dcb_viewer/formats/card_db.py` to map model IDs to canonical names from `CARD2.CDD` (Agumon, Betamon, Greymon, WarGreymon, Omnimon, etc.).
+  * Implemented Phase 2 Web 3D Viewer:
+    * Created `dcb_viewer/web/server.py` (Multi-threaded HTTP streaming server).
+    * Created `dcb_viewer/web/static/index.html` (Modern Three.js WebGL app with OrbitControls, Animation timeline scrubber, Play/Pause, speed adjustment, wireframe, skeleton bone helpers, and instant search).
+    * Added `dcb-viewer serve` CLI command.
+    * Verified 12/12 unit and integration tests passing (`tests/test_server.py`).
+  * **Phase 2 (3D Web Visualization) is 100% complete!**
