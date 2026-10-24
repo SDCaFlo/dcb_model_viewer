@@ -15,7 +15,10 @@ from dcb_viewer.formats.archive import (
     CHUNK_ID_ANIMATION,
     CHUNK_ID_TEXTURE,
 )
+from dcb_viewer.formats.animation import parse_animation
+from dcb_viewer.formats.model import parse_model
 from dcb_viewer.formats.tim import parse_tim, parse_tim_list
+from dcb_viewer.exporters.gltf import export_model_to_glb, DEFAULT_SCALE
 
 
 def cmd_inspect_drv(args: argparse.Namespace) -> None:
@@ -146,6 +149,128 @@ def cmd_extract_tim(args: argparse.Namespace) -> None:
     print(f"\nDone! Successfully exported {total_exported} PNG texture(s).")
 
 
+def cmd_export_gltf(args: argparse.Namespace) -> None:
+    """Exports a single .PAK model package to glTF 2.0 / GLB."""
+    pak_path = Path(args.pak_path)
+    if not pak_path.is_file():
+        print(f"Error: File not found: {pak_path}", file=sys.stderr)
+        sys.exit(1)
+
+    out_path = Path(args.output_path)
+    if out_path.is_dir() or not out_path.suffix:
+        out_path = out_path / f"{pak_path.stem}.glb"
+
+    pak = PakArchive.from_file(pak_path)
+
+    # Chunk 0: Model
+    model_chunk = pak.find_all_chunks(CHUNK_ID_MODEL)
+    if not model_chunk:
+        print(f"Error: No 3D model chunk (ID=0) found in {pak_path.name}", file=sys.stderr)
+        sys.exit(1)
+
+    model = parse_model(model_chunk[0].data, model_id=model_chunk[0].sub_id)
+
+    # Chunk 5: Texture
+    tex_chunk = pak.find_chunk(CHUNK_ID_TEXTURE, model_chunk[0].sub_id)
+    tim_img = None
+    if tex_chunk:
+        try:
+            tim_img, _ = parse_tim(tex_chunk.data)
+        except Exception as e:
+            print(f"Warning: Failed to parse TIM texture: {e}", file=sys.stderr)
+
+    # Chunk 1: Animations
+    anims = []
+    if not args.static:
+        for a_id in range(8):
+            a_chunk = pak.find_chunk(CHUNK_ID_ANIMATION, a_id)
+            if a_chunk:
+                try:
+                    decomp = decompress_lz_huffman(a_chunk.data)
+                    clip = parse_animation(decomp, clip_id=a_id, bone_count=model.bone_count)
+                    anims.append(clip)
+                except Exception as e:
+                    print(f"Warning: Failed to decode animation {a_id}: {e}", file=sys.stderr)
+
+    glb_bytes = export_model_to_glb(
+        model=model,
+        texture=tim_img,
+        animations=anims,
+        palette_idx=args.palette,
+        scale=args.scale,
+        output_path=out_path,
+        skinned=not args.static,
+    )
+
+    print(f"Successfully exported {out_path} ({len(glb_bytes):,} bytes)")
+    print(f"  Bones: {model.bone_count}, Vertices: {model.total_vertices}, Faces: {model.total_faces}")
+    print(f"  Animations: {len(anims)}, Skinned: {not args.static}")
+
+
+def cmd_batch_export_gltf(args: argparse.Namespace) -> None:
+    """Batch converts all Digimon .PAK models in a directory to .glb."""
+    input_dir = Path(args.input_dir)
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    pak_files = sorted(list(input_dir.glob("*.PAK")) + list(input_dir.glob("*.pak")))
+    # Deduplicate for Windows
+    found = {p.resolve(): p for p in pak_files}
+    targets = sorted(found.values(), key=lambda p: p.name.upper())
+
+    if not targets:
+        print(f"No .PAK files found in {input_dir}")
+        sys.exit(1)
+
+    print(f"Found {len(targets)} .PAK models. Starting batch export to {output_dir}...")
+    success = 0
+
+    for idx, pak_p in enumerate(targets, 1):
+        dest = output_dir / f"{pak_p.stem}.glb"
+        try:
+            pak = PakArchive.from_file(pak_p)
+            model_chunks = pak.find_all_chunks(CHUNK_ID_MODEL)
+            if not model_chunks:
+                continue
+
+            model = parse_model(model_chunks[0].data, model_id=model_chunks[0].sub_id)
+            tex_chunk = pak.find_chunk(CHUNK_ID_TEXTURE, model_chunks[0].sub_id)
+            tim_img = None
+            if tex_chunk:
+                try:
+                    tim_img, _ = parse_tim(tex_chunk.data)
+                except Exception:
+                    pass
+
+            anims = []
+            if not args.static:
+                for a_id in range(8):
+                    a_chunk = pak.find_chunk(CHUNK_ID_ANIMATION, a_id)
+                    if a_chunk:
+                        try:
+                            decomp = decompress_lz_huffman(a_chunk.data)
+                            clip = parse_animation(decomp, clip_id=a_id, bone_count=model.bone_count)
+                            anims.append(clip)
+                        except Exception:
+                            pass
+
+            export_model_to_glb(
+                model=model,
+                texture=tim_img,
+                animations=anims,
+                scale=args.scale,
+                output_path=dest,
+                skinned=not args.static,
+            )
+            success += 1
+            if idx % 20 == 0 or idx == len(targets):
+                print(f"  [{idx}/{len(targets)}] Exported {dest.name}")
+        except Exception as e:
+            print(f"  [ERROR] Failed to export {pak_p.name}: {e}")
+
+    print(f"\nBatch export complete! Successfully exported {success}/{len(targets)} models to {output_dir}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="dcb-viewer",
@@ -174,6 +299,23 @@ def main() -> None:
     p_ext_tim.add_argument("input_path", help="Path to .TIM or .PAK file")
     p_ext_tim.add_argument("output_path", help="Target output directory or .png path")
     p_ext_tim.set_defaults(func=cmd_extract_tim)
+
+    # export-gltf
+    p_exp_gltf = subparsers.add_parser("export-gltf", help="Export a Digimon .PAK to glTF 2.0 / GLB")
+    p_exp_gltf.add_argument("pak_path", help="Path to .PAK file (e.g. 003.PAK)")
+    p_exp_gltf.add_argument("output_path", help="Target .glb file or output directory")
+    p_exp_gltf.add_argument("--palette", type=int, default=0, help="TIM CLUT palette bank index (default 0)")
+    p_exp_gltf.add_argument("--scale", type=float, default=DEFAULT_SCALE, help="Metric scale multiplier (default 0.01)")
+    p_exp_gltf.add_argument("--static", action="store_true", help="Export static mesh instead of rigged/animated")
+    p_exp_gltf.set_defaults(func=cmd_export_gltf)
+
+    # batch-export-gltf
+    p_batch_gltf = subparsers.add_parser("batch-export-gltf", help="Batch export all .PAK models in a folder to GLB")
+    p_batch_gltf.add_argument("input_dir", help="Directory containing .PAK files (e.g. original_iso/extracted/F/)")
+    p_batch_gltf.add_argument("output_dir", help="Output directory for .glb files")
+    p_batch_gltf.add_argument("--scale", type=float, default=DEFAULT_SCALE, help="Metric scale multiplier (default 0.01)")
+    p_batch_gltf.add_argument("--static", action="store_true", help="Export static mesh instead of rigged/animated")
+    p_batch_gltf.set_defaults(func=cmd_batch_export_gltf)
 
     args = parser.parse_args()
     args.func(args)

@@ -5,9 +5,9 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
 ---
 
 ## 📌 Current Status Summary
-* **Active Phase**: Phase 1 - Model and Animation Extraction
-* **Current Focus**: Environment Setup & Decompilation Codebase Analysis
-* **Status**: 🟢 In Progress
+* **Active Phase**: Phase 2 - Visualization (Interactive 3D Tool)
+* **Current Focus**: 3D Viewport Architecture & Desktop GUI
+* **Status**: 🟢 Phase 1 Complete (All 267 Digimon Models, Textures, and Skeletal Animations Successfully Extracted & Exported to glTF 2.0 / GLB)
 
 ---
 
@@ -26,8 +26,8 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
 | **P1-07** | PSX TIM Texture Decoder | 🟢 Done | Implemented `TimImage`, `parse_tim`, `parse_tim_list` in `dcb_viewer/formats/tim.py` with multi-CLUT and PIL/NumPy support |
 | **P1-08** | 3D Mesh Geometry Parser | 🟢 Done | Implemented OMD / OMD0 mesh parser in `dcb_viewer/formats/model.py` (SVECTOR vertices, normals, quads/tris, UVs) |
 | **P1-09** | Bone Hierarchy & Skeleton Parser | 🟢 Done | Implemented `BoneNode`, parent hierarchy, and local/global rest-pose matrix transformations |
-| **P1-10** | Skeletal Animation Parser | ⚪ Backlog | Parse rotation, translation, and keyframe tracks (Chunk 1) |
-| **P1-11** | glTF 2.0 / GLB Exporter | ⚪ Backlog | Export rigged, textured models with animations to `.glb` |
+| **P1-10** | Skeletal Animation Parser | 🟢 Done | Implemented `parse_animation` in `dcb_viewer/formats/animation.py` (KeyFrame duration, YXZ Euler to Quaternions, 8 animation slots) |
+| **P1-11** | glTF 2.0 / GLB Exporter | 🟢 Done | Implemented binary `.glb` builder in `dcb_viewer/exporters/gltf.py` with embedded PNG textures, bone skinning, and anim tracks |
 
 ---
 
@@ -80,3 +80,15 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
     * Parsed `OMD0` blocks: `partCount`, `vertCount`, SVECTOR coordinates, normal groups, and `sortModelPrimitives` polygon packets (quads & triangles with UV mapping).
     * Implemented world rest-pose baking with forward hierarchical matrix multiplication.
   * Verified all 7 unit & integration tests passing (`pytest` 7/7).
+  * Reverse-engineered Chunk 1 skeletal keyframe animations from `include/dcb/model_anim.h` and `src/main/model/model_anim.c`:
+    * Each frame is 772 bytes (`duration`, `sound`, and 32 `KeyBone` structs).
+    * Converted PSX 4096-fixed point YXZ Euler angles to glTF-compatible normalized quaternions.
+    * Implemented `dcb_viewer/formats/animation.py`.
+  * Implemented glTF 2.0 / GLB binary exporter in `dcb_viewer/exporters/gltf.py`:
+    * Embedded PNG texture images with retro NEAREST sampling.
+    * Rigged skeletal mesh with `JOINTS_0`, `WEIGHTS_0`, and `inverseBindMatrices`.
+    * Export of up to 8 animation tracks per model (Idle, Attack 1, Attack 2, Finisher, Hurt, Defeat, Victory, Guard).
+  * Added `export-gltf` and `batch-export-gltf` CLI commands.
+  * Verified 11/11 unit and integration tests passing (`tests/test_gltf.py`, `tests/test_animation.py`).
+  * Batch exported all **267/267 Digimon models** to `original_iso/extracted/models/*.glb` with a 100% success rate!
+  * **Phase 1 (Model and Animation Extraction) is 100% complete!**

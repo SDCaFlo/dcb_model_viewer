@@ -291,6 +291,12 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
 
         if not part_norms:
             part_norms = [(0.0, 1.0, 0.0)] * vert_count
+        elif len(part_norms) < vert_count:
+            # Pad with default/last normal so vert count matches normal count 1:1
+            fallback = part_norms[-1] if part_norms else (0.0, 1.0, 0.0)
+            part_norms.extend([fallback] * (vert_count - len(part_norms)))
+        elif len(part_norms) > vert_count:
+            part_norms = part_norms[:vert_count]
         all_norms.extend(part_norms)
 
         # Read primitive packets (sortModelPrimitives)
