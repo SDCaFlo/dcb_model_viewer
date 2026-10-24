@@ -1,0 +1,19 @@
+[project]
+name = "dcb-model-viewer"
+version = "0.1.0"
+description = "3D model and animation extractor and viewer for Digimon Digital Card Battle (PSX - SLUS-01328)"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.0.0",
+    "pillow>=10.0.0",
+    "pygltflib>=1.16.0",
+    "construct>=2.10.70",
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+packages = [{include = "dcb_viewer"}]

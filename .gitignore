@@ -1,0 +1,33 @@
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# External third-party repositories
+external_repository/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Temporary / testing files
+scratch/
+output/
+dump/
+*.bin
+*.iso
+*.cue
