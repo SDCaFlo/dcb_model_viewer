@@ -25,6 +25,7 @@ class PolygonFace:
     """Represents a textured or untextured polygon face (triangle or quad)."""
     vertex_indices: tuple[int, ...]
     uvs: tuple[tuple[float, float], ...] = ()
+    normals: tuple[tuple[float, float, float], ...] = ()
     colors: tuple[tuple[int, int, int], ...] = ()
     is_quad: bool = False
     clut: int = 0
@@ -46,45 +47,82 @@ class BoneMesh:
     def face_count(self) -> int:
         return len(self.faces)
 
-    def get_triangulated_data(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Returns triangulated face indices (M, 3), UVs (M, 3, 2), and CLUT IDs (M,).
+    def get_triangulated_data(
+        self,
+        align_winding: bool = True,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Returns triangulated face indices (M, 3), UVs (M, 3, 2), CLUT IDs (M,), and normals (M, 3, 3).
         
         Quads (v0, v1, v2, v3) are split into two triangles: (0, 1, 2) and (1, 3, 2).
+        If align_winding is True, ensures counter-clockwise (CCW) front-facing winding
+        consistent with the authored outward vertex normals.
         """
         tris: list[tuple[int, int, int]] = []
         uv_list: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float]]] = []
         clut_list: list[int] = []
+        norm_list: list[tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]] = []
+
+        def add_triangle(
+            v0: int, v1: int, v2: int,
+            uv0: tuple[float, float], uv1: tuple[float, float], uv2: tuple[float, float],
+            n0: tuple[float, float, float], n1: tuple[float, float, float], n2: tuple[float, float, float],
+            clut: int,
+        ) -> None:
+            if align_winding and len(self.vertices) > max(v0, v1, v2):
+                p0 = self.vertices[v0]
+                p1 = self.vertices[v1]
+                p2 = self.vertices[v2]
+                gn = np.cross(p1 - p0, p2 - p0)
+                gn_len = np.linalg.norm(gn)
+                if gn_len > 1e-6:
+                    gn = gn / gn_len
+                    avg_n = np.array(n0, dtype=np.float32) + np.array(n1, dtype=np.float32) + np.array(n2, dtype=np.float32)
+                    avg_n_len = np.linalg.norm(avg_n)
+                    if avg_n_len > 1e-6:
+                        avg_n = avg_n / avg_n_len
+                        if float(np.dot(gn, avg_n)) < 0.0:
+                            v1, v2 = v2, v1
+                            uv1, uv2 = uv2, uv1
+                            n1, n2 = n2, n1
+
+            tris.append((v0, v1, v2))
+            uv_list.append((uv0, uv1, uv2))
+            clut_list.append(clut)
+            norm_list.append((n0, n1, n2))
 
         for f in self.faces:
-            if f.is_quad:
-                # PSX quad triangulation: (0, 1, 2) and (1, 3, 2)
-                # Matches PSX GPU POLY_FT4 / POLY_GT4 rasterizer winding order and normal consistency
-                tris.append((f.vertex_indices[0], f.vertex_indices[1], f.vertex_indices[2]))
-                if f.uvs and len(f.uvs) >= 4:
-                    uv_list.append((f.uvs[0], f.uvs[1], f.uvs[2]))
-                else:
-                    uv_list.append(((0.0, 0.0), (0.0, 0.0), (0.0, 0.0)))
-                clut_list.append(f.clut)
+            n_defaults = [(0.0, 1.0, 0.0)] * 4
+            f_norms = f.normals if f.normals and len(f.normals) >= (4 if f.is_quad else 3) else n_defaults
+            f_uvs = f.uvs if f.uvs and len(f.uvs) >= (4 if f.is_quad else 3) else [((0.0, 0.0))] * 4
 
+            if f.is_quad:
+                # Triangle 1: (0, 1, 2)
+                add_triangle(
+                    f.vertex_indices[0], f.vertex_indices[1], f.vertex_indices[2],
+                    f_uvs[0], f_uvs[1], f_uvs[2],
+                    f_norms[0], f_norms[1], f_norms[2],
+                    f.clut,
+                )
                 # Triangle 2: (1, 3, 2)
-                tris.append((f.vertex_indices[1], f.vertex_indices[3], f.vertex_indices[2]))
-                if f.uvs and len(f.uvs) >= 4:
-                    uv_list.append((f.uvs[1], f.uvs[3], f.uvs[2]))
-                else:
-                    uv_list.append(((0.0, 0.0), (0.0, 0.0), (0.0, 0.0)))
-                clut_list.append(f.clut)
+                add_triangle(
+                    f.vertex_indices[1], f.vertex_indices[3], f.vertex_indices[2],
+                    f_uvs[1], f_uvs[3], f_uvs[2],
+                    f_norms[1], f_norms[3], f_norms[2],
+                    f.clut,
+                )
             else:
-                tris.append((f.vertex_indices[0], f.vertex_indices[1], f.vertex_indices[2]))
-                if f.uvs and len(f.uvs) >= 3:
-                    uv_list.append((f.uvs[0], f.uvs[1], f.uvs[2]))
-                else:
-                    uv_list.append(((0.0, 0.0), (0.0, 0.0), (0.0, 0.0)))
-                clut_list.append(f.clut)
+                add_triangle(
+                    f.vertex_indices[0], f.vertex_indices[1], f.vertex_indices[2],
+                    f_uvs[0], f_uvs[1], f_uvs[2],
+                    f_norms[0], f_norms[1], f_norms[2],
+                    f.clut,
+                )
 
         return (
             np.array(tris, dtype=np.uint32) if tris else np.empty((0, 3), dtype=np.uint32),
             np.array(uv_list, dtype=np.float32) if uv_list else np.empty((0, 3, 2), dtype=np.float32),
             np.array(clut_list, dtype=np.uint32) if clut_list else np.empty((0,), dtype=np.uint32),
+            np.array(norm_list, dtype=np.float32) if norm_list else np.empty((0, 3, 3), dtype=np.float32),
         )
 
     def get_triangulated_indices_and_uvs(self) -> tuple[np.ndarray, np.ndarray]:
@@ -92,7 +130,7 @@ class BoneMesh:
         
         Quads (v0, v1, v2, v3) are split into two triangles: (0, 1, 2) and (1, 3, 2).
         """
-        tris, uvs, _ = self.get_triangulated_data()
+        tris, uvs, _, _ = self.get_triangulated_data()
         return tris, uvs
 
 
@@ -289,7 +327,7 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
         vert_base_idx = len(all_verts)
         all_verts.extend(part_verts)
 
-        # Read normal groups
+        # Read normal groups (tmd_sort.c transformAndLightVertices)
         groups = struct.unpack_from("<I", data, data_ptr)[0]
         data_ptr += 4
         part_norms: list[tuple[float, float, float]] = []
@@ -303,16 +341,16 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                     nx, ny, nz, _ = struct.unpack_from("<hhhh", data, data_ptr)
                     part_norms.append((float(nx) / 4096.0, float(ny) / 4096.0, float(nz) / 4096.0))
                     data_ptr += 8
+            else:
+                # Flat color word consumes 1 entry in scratchpad out
+                part_norms.append((0.0, 1.0, 0.0))
 
-        if not part_norms:
-            part_norms = [(0.0, 1.0, 0.0)] * vert_count
-        elif len(part_norms) < vert_count:
-            # Pad with default/last normal so vert count matches normal count 1:1
-            fallback = part_norms[-1] if part_norms else (0.0, 1.0, 0.0)
-            part_norms.extend([fallback] * (vert_count - len(part_norms)))
-        elif len(part_norms) > vert_count:
-            part_norms = part_norms[:vert_count]
-        all_norms.extend(part_norms)
+        def get_norm(w_val: int) -> tuple[float, float, float]:
+            noff = w_val & 0xFFFF
+            nidx = (noff - (vert_count * 8)) // 4
+            if 0 <= nidx < len(part_norms):
+                return part_norms[nidx]
+            return (0.0, 1.0, 0.0)
 
         # Read primitive packets (sortModelPrimitives from tmd_sort.c)
         while True:
@@ -347,6 +385,11 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                             v2 = ((w2 >> 16) // 8) + vert_base_idx
                             v3 = ((w3 >> 16) // 8) + vert_base_idx
 
+                            n0 = get_norm(w0)
+                            n1 = get_norm(w1)
+                            n2 = get_norm(w2)
+                            n3 = get_norm(w3)
+
                             uv0 = ((u0 & 0xFF) / 256.0, ((u0 >> 8) & 0xFF) / 256.0)
                             uv1 = ((u1 & 0xFF) / 256.0, ((u1 >> 8) & 0xFF) / 256.0)
                             uv2 = ((u2 & 0xFF) / 256.0, ((u2 >> 8) & 0xFF) / 256.0)
@@ -356,6 +399,7 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                                 PolygonFace(
                                     vertex_indices=(v0, v1, v2, v3),
                                     uvs=(uv0, uv1, uv2, uv3),
+                                    normals=(n0, n1, n2, n3),
                                     is_quad=True,
                                     clut=clut,
                                 )
@@ -366,6 +410,8 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                                 data_ptr += 16
                                 va = ((wa >> 16) // 8) + vert_base_idx
                                 vb = ((wb >> 16) // 8) + vert_base_idx
+                                na = get_norm(wa)
+                                nb = get_norm(wb)
                                 uva = ((ua & 0xFF) / 256.0, ((ua >> 8) & 0xFF) / 256.0)
                                 uvb = ((ub & 0xFF) / 256.0, ((ub >> 8) & 0xFF) / 256.0)
 
@@ -373,9 +419,11 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                                     # Strip: alternating edge replacement
                                     if k % 2 == 1:
                                         v2, v3 = va, vb
+                                        n2, n3 = na, nb
                                         uv2, uv3 = uva, uvb
                                     else:
                                         v0, v1 = va, vb
+                                        n0, n1 = na, nb
                                         uv0, uv1 = uva, uvb
                                         if (ua >> 16) != 0:
                                             clut = ua >> 16
@@ -383,15 +431,18 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                                     # Fan: V0 anchor stays, V1/V2 alternate with V3
                                     if k % 2 == 1:
                                         v2, v3 = va, vb
+                                        n2, n3 = na, nb
                                         uv2, uv3 = uva, uvb
                                     else:
                                         v1, v3 = va, vb
+                                        n1, n3 = na, nb
                                         uv1, uv3 = uva, uvb
 
                                 all_faces.append(
                                     PolygonFace(
                                         vertex_indices=(v0, v1, v2, v3),
                                         uvs=(uv0, uv1, uv2, uv3),
+                                        normals=(n0, n1, n2, n3),
                                         is_quad=True,
                                         clut=clut,
                                     )
@@ -407,6 +458,10 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                             v1 = ((w1 >> 16) // 8) + vert_base_idx
                             v2 = ((w2 >> 16) // 8) + vert_base_idx
 
+                            n0 = get_norm(w0)
+                            n1 = get_norm(w1)
+                            n2 = get_norm(w2)
+
                             uv0 = ((u0 & 0xFF) / 256.0, ((u0 >> 8) & 0xFF) / 256.0)
                             uv1 = ((u1 & 0xFF) / 256.0, ((u1 >> 8) & 0xFF) / 256.0)
                             uv2 = ((u2 & 0xFF) / 256.0, ((u2 >> 8) & 0xFF) / 256.0)
@@ -415,6 +470,7 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                                 PolygonFace(
                                     vertex_indices=(v0, v1, v2),
                                     uvs=(uv0, uv1, uv2),
+                                    normals=(n0, n1, n2),
                                     is_quad=False,
                                     clut=clut,
                                 )
@@ -424,25 +480,30 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                                 wa, ua = struct.unpack_from("<2I", data, data_ptr)
                                 data_ptr += 8
                                 va = ((wa >> 16) // 8) + vert_base_idx
+                                na = get_norm(wa)
                                 uva = ((ua & 0xFF) / 256.0, ((ua >> 8) & 0xFF) / 256.0)
 
                                 if k % 2 == 1:
                                     v2 = va
+                                    n2 = na
                                     uv2 = uva
                                 else:
                                     if pass_idx != 0:
                                         v0 = va
+                                        n0 = na
                                         uv0 = uva
                                         if (ua >> 16) != 0:
                                             clut = ua >> 16
                                     else:
                                         v1 = va
+                                        n1 = na
                                         uv1 = uva
 
                                 all_faces.append(
                                     PolygonFace(
                                         vertex_indices=(v0, v1, v2),
                                         uvs=(uv0, uv1, uv2),
+                                        normals=(n0, n1, n2),
                                         is_quad=False,
                                         clut=clut,
                                     )
@@ -457,26 +518,51 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                             v2 = ((w2 >> 16) // 8) + vert_base_idx
                             v3 = ((w3 >> 16) // 8) + vert_base_idx
 
-                            all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2, v3), is_quad=True, clut=0))
+                            n0 = get_norm(w0)
+                            n1 = get_norm(w1)
+                            n2 = get_norm(w2)
+                            n3 = get_norm(w3)
+
+                            all_faces.append(
+                                PolygonFace(
+                                    vertex_indices=(v0, v1, v2, v3),
+                                    normals=(n0, n1, n2, n3),
+                                    is_quad=True,
+                                    clut=0,
+                                )
+                            )
 
                             for k in range(1, strip_len):
                                 wa, wb = struct.unpack_from("<2I", data, data_ptr)
                                 data_ptr += 8
                                 va = ((wa >> 16) // 8) + vert_base_idx
                                 vb = ((wb >> 16) // 8) + vert_base_idx
+                                na = get_norm(wa)
+                                nb = get_norm(wb)
 
                                 if pass_idx != 0:
                                     if k % 2 == 1:
                                         v2, v3 = va, vb
+                                        n2, n3 = na, nb
                                     else:
                                         v0, v1 = va, vb
+                                        n0, n1 = na, nb
                                 else:
                                     if k % 2 == 1:
                                         v2, v3 = va, vb
+                                        n2, n3 = na, nb
                                     else:
                                         v1, v3 = va, vb
+                                        n1, n3 = na, nb
 
-                                all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2, v3), is_quad=True, clut=0))
+                                all_faces.append(
+                                    PolygonFace(
+                                        vertex_indices=(v0, v1, v2, v3),
+                                        normals=(n0, n1, n2, n3),
+                                        is_quad=True,
+                                        clut=0,
+                                    )
+                                )
 
                         else:
                             w0, w1, w2 = struct.unpack_from("<3I", data, data_ptr)
@@ -486,23 +572,59 @@ def _parse_bone_omd0(data: bytes, offset: int, bone_index: int) -> BoneMesh:
                             v1 = ((w1 >> 16) // 8) + vert_base_idx
                             v2 = ((w2 >> 16) // 8) + vert_base_idx
 
-                            all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2), is_quad=False, clut=0))
+                            n0 = get_norm(w0)
+                            n1 = get_norm(w1)
+                            n2 = get_norm(w2)
+
+                            all_faces.append(
+                                PolygonFace(
+                                    vertex_indices=(v0, v1, v2),
+                                    normals=(n0, n1, n2),
+                                    is_quad=False,
+                                    clut=0,
+                                )
+                            )
 
                             for k in range(1, strip_len):
                                 wa = struct.unpack_from("<I", data, data_ptr)[0]
                                 data_ptr += 4
                                 va = ((wa >> 16) // 8) + vert_base_idx
+                                na = get_norm(wa)
 
                                 if k % 2 == 1:
                                     v2 = va
+                                    n2 = na
                                 else:
                                     if pass_idx != 0:
                                         v0 = va
+                                        n0 = na
                                     else:
                                         v1 = va
+                                        n1 = na
 
-                                all_faces.append(PolygonFace(vertex_indices=(v0, v1, v2), is_quad=False, clut=0))
+                                all_faces.append(
+                                    PolygonFace(
+                                        vertex_indices=(v0, v1, v2),
+                                        normals=(n0, n1, n2),
+                                        is_quad=False,
+                                        clut=0,
+                                    )
+                                )
 
     v_arr = np.array(all_verts, dtype=np.float32) if all_verts else np.empty((0, 3), dtype=np.float32)
-    n_arr = np.array(all_norms, dtype=np.float32) if all_norms else np.empty((0, 3), dtype=np.float32)
+    # Per-vertex average normal fallback for bone mesh
+    vert_norms = np.zeros_like(v_arr)
+    vert_norm_counts = np.zeros(len(v_arr), dtype=np.int32)
+    for f in all_faces:
+        for vi, norm in zip(f.vertex_indices, f.normals):
+            if 0 <= vi < len(vert_norms):
+                vert_norms[vi] += norm
+                vert_norm_counts[vi] += 1
+    for i in range(len(vert_norms)):
+        if vert_norm_counts[i] > 0:
+            l = float(np.linalg.norm(vert_norms[i]))
+            vert_norms[i] = vert_norms[i] / l if l > 1e-6 else np.array([0.0, 1.0, 0.0], dtype=np.float32)
+        else:
+            vert_norms[i] = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    n_arr = vert_norms.astype(np.float32)
     return BoneMesh(bone_index=bone_index, vertices=v_arr, normals=n_arr, faces=all_faces)

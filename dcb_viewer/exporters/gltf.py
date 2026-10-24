@@ -257,7 +257,6 @@ def export_model_to_glb(
             continue
 
         local_verts = bone.mesh.vertices.copy()
-        local_norms = bone.mesh.normals.copy()
 
         # glTF 2.0 Skinning Specification:
         # Vertex attributes (POSITION, NORMAL) in the buffer MUST be in bind-pose model space!
@@ -266,20 +265,21 @@ def export_model_to_glb(
         rot_m = bone.global_transform[:3, :3]
         t_v = bone.global_transform[:3, 3]
         v_world = (local_verts @ rot_m.T) + t_v
-        n_world = local_norms @ rot_m.T
 
         # PSX coordinate inversion: x' = x, y' = -y, z' = -z
         gl_verts = v_world * [scale, -scale, -scale]
-        gl_norms = n_world * [1.0, -1.0, -1.0]
 
-        # Normalize normals
+        tris, uvs, cluts, tri_norms = bone.mesh.get_triangulated_data()
+        if len(tris) == 0:
+            continue
+
+        # Transform triangulated per-corner normals into bind-pose model space
+        flat_norms = tri_norms.reshape(-1, 3)
+        n_world = flat_norms @ rot_m.T
+        gl_norms = n_world * [1.0, -1.0, -1.0]
         norms_len = np.linalg.norm(gl_norms, axis=1, keepdims=True)
         norms_len[norms_len == 0] = 1.0
         gl_norms = (gl_norms / norms_len).astype(np.float32)
-
-        tris, uvs, cluts = bone.mesh.get_triangulated_data()
-        if len(tris) == 0:
-            continue
 
         v_count = len(gl_verts)
         all_verts.append(gl_verts.astype(np.float32))
@@ -350,10 +350,10 @@ def export_model_to_glb(
         mat_idx = builder.add_material(name="Mat_Default")
         pal_mat_map[-1] = mat_idx
 
-    # Note on UV indexing: Since faces were triangulated with per-vertex UVs,
-    # we unroll vertices to match face indices so UVs align 1:1 with vertex attributes.
+    # Note on UV & Normal indexing: Faces were triangulated with per-corner UVs and normals.
+    # Unroll vertices to match face indices so positions, normals, and UVs align 1:1.
     unrolled_verts = cat_verts[cat_indices]
-    unrolled_norms = cat_norms[cat_indices]
+    unrolled_norms = cat_norms
     unrolled_uvs = cat_uvs
 
     if skinned:

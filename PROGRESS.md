@@ -55,6 +55,20 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
 ## 📝 Activity Log
 
 * **2026-10-24**:
+  * Resolved Blender pauldron shading artifact ("black splotch") on Magnamon #189 and other models:
+    * **Root Cause 1: Normal Table Decoupling & Truncation**:
+      * In OMD format, normals are not 1:1 with vertices: models have distinct normal pools with more normals than vertices (e.g. Bone 21 pauldron has 22 vertices but 39 normals; Bone 3 has 42 vertices but 72 normals).
+      * The previous parser truncated normals to `vert_count` and mapped them by vertex index (`normals[vertex_index]`).
+      * In `tmd_sort.c` (`loadTriangleToGte`, `transformAndLightVertices`), primitive packet words encode both vertex offset (`w >> 16`) and normal offset (`w & 0xFFFF`) into scratchpad memory (`(offset - (vert_count * 8)) // 4`).
+      * Truncating and indexing normals by vertex caused opposing normals across shared vertices (e.g. vertex 0 having $\vec{n} \cdot \vec{n}_{\text{geom}} = -0.97$), which collapsed Blender's PBR diffuse shading to pitch black.
+    * **Root Cause 2: Quad Triangulation Winding Inversion**:
+      * In PSX coordinate space, many quad strip/fan primitives were mirrored with clockwise (CW) vertex winding relative to the authored surface normal.
+      * When exported to glTF (which expects counter-clockwise / CCW front faces), Blender detected inverted geometric normals vs vertex normals.
+    * **Implementation**:
+      * Updated `dcb_viewer/formats/model.py`: parsed exact per-face-vertex normal indices from primitive packet words (`w & 0xFFFF`).
+      * Added `normals` attribute to `PolygonFace` and updated `get_triangulated_data()` to preserve per-corner authored normals and enforce CCW winding (`\vec{n}_{\text{geom}} \cdot \vec{n}_{\text{authored}} > 0`).
+      * Updated `dcb_viewer/exporters/gltf.py`: exported per-corner triangulated normals aligned 1:1 with unrolled positions and UVs.
+      * Batch re-exported all 267 models with 100% clean normals and zero black splotches.
   * Corrected animation playback timing to authentic 60 Hz PSX hardware rate:
     * In `dcb_decomp`, `runModelAnimationTask` steps every VBLANK (`waitFrames(1)`).
     * Fixed `FPS = 60.0` in `dcb_viewer/formats/animation.py`, eliminating the 0.5× half-speed slowdown so animations now play at authentic full speed.
