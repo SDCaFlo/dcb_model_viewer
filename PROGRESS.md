@@ -21,8 +21,9 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
 | **P1-02** | External Repositories Setup (`dcb_decomp`, `mkpsxiso`) | 🟢 Done | Cloned into `external_repository/` (ignored in git) |
 | **P1-03** | Project Standards & Guidelines (`AGENTS.md`, `PROGRESS.md`) | 🟢 Done | Operational guides and backlog established |
 | **P1-04** | Disc Structure & Archive Analysis | 🟢 Done | Extracted disc via `dumpsxiso`. Identified `.DRV` virtual drive archives (`cd_file.c` struct `FileEntry`) |
-| **P1-05** | Decompilation Research (`dcb_decomp`) | 🟡 In Progress | Documented `.DRV` header format (32-byte entries, sector offset `<< 11`) |
-| **P1-06** | PSX TIM Texture Decoder | ⚪ Backlog | Parse 4-bit / 8-bit / 16-bit TIMs and CLUT palettes to PNG |
+| **P1-05** | Decompilation Research (`dcb_decomp`) | 🟢 Done | Reverse-engineered `.DRV` format, `.PAK` chunk structure (`archive.c`), and LZSS+Huffman decompression (`decompress.c`) |
+| **P1-06** | Archive Unpacker & Decompressor | 🟢 Done | Implemented `DrvArchive`, `PakArchive`, and `decompress_lz_huffman` in `dcb_viewer/formats/archive.py` and CLI tools |
+| **P1-07** | PSX TIM Texture Decoder | ⚪ Backlog | Parse 4-bit / 8-bit / 16-bit TIMs and CLUT palettes to PNG |
 | **P1-07** | 3D Mesh Geometry Parser | ⚪ Backlog | Parse vertices, normals, UVs, polygon packets (tris/quads) |
 | **P1-08** | Bone Hierarchy & Skeleton Parser | ⚪ Backlog | Parse joint transforms and parent-child hierarchy |
 | **P1-09** | Skeletal Animation Parser | ⚪ Backlog | Parse rotation, translation, and keyframe tracks |
@@ -63,3 +64,13 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
     * Each container has a table of 32-byte `FileEntry` records (`key`, `sector`, `size`, `unkC`, `name`).
     * Offsets are sector-based (`sector * 2048`).
     * Keys encode file extension or directory marker (`0x80`).
+  * Reverse-engineered `.PAK` chunk structure from `external_repository/dcb_decomp/src/main/system/archive.c` and `include/game.h`:
+    * 8-byte chunk headers (`id`, `sub`, `size`).
+    * `id == 0`: 3D model geometry and skeleton.
+    * `id == 1`: Keyframe animation tracks (0 to 7).
+    * `id == 5`: Standard PSX TIM texture.
+  * Reverse-engineered compression from `external_repository/dcb_decomp/src/main/system/decompress.c`:
+    * Ported `decompressLzHuffman` (LZSS 4KB ring buffer + dynamic Huffman tree) to pure Python.
+  * Created `dcb_viewer/formats/archive.py` (`DrvArchive`, `PakArchive`, `decompress_lz_huffman`) and `dcb_viewer/cli.py`.
+  * Verified unit & integration tests (`tests/test_archive.py`) passing 100%.
+  * Unpacked all 2,401 files across all `.DRV` disc archives to `original_iso/extracted/`.
