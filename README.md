@@ -9,17 +9,19 @@ A Python-based extraction, conversion, and 3D visualization suite for **Digimon 
 The primary objective is to reverse engineer, extract, and visualize the 3D Digimon models, arenas/stages, textures, and skeletal animations embedded in the original PlayStation 1 release.
 
 ### Project Roadmap
-* **Phase 1: Extraction & Parsing (Data Pipeline)**
-  * [ ] File container unpacking (analyzing archives, compression, LBA indexing).
-  * [ ] Texture extraction & conversion (PSX TIM format / indexed CLUTs to PNG).
-  * [ ] Mesh geometry parsing (vertices, normals, UVs, quad/triangle faces, materials).
-  * [ ] Skeleton and animation parsing (bone hierarchies, keyframes, rotation/translation data).
-  * [ ] Modern 3D format export (standard **glTF 2.0 / .glb** for seamless compatibility with Blender, Unity, Godot).
-* **Phase 2: Visualization (Interactive 3D Tool)**
-  * [ ] Interactive 3D viewport (wireframe, flat, textured, and lighting modes).
-  * [ ] Skeletal animation timeline playback (scrubbing, looping, speed controls).
-  * [ ] Texture & material inspector.
-  * [ ] GUI frontend (desktop application) for browsing game archives and previewing models on the fly.
+* **Phase 1: Extraction & Parsing (Data Pipeline)** 🟢 **Complete**
+  * [x] File container unpacking (`.DRV` virtual disc archives, sector indexing).
+  * [x] Compression engine (`LZSS` 4KB circular buffer + dynamic Huffman tree decoder).
+  * [x] Texture extraction & conversion (PSX TIM format / 4-bit, 8-bit, 16-bit CLUTs to PNG).
+  * [x] Mesh geometry parsing (OMD format, SVECTOR vertices, normals, UVs, quad/triangle packets).
+  * [x] Skeleton and animation parsing (bone hierarchies, 772-byte keyframes, YXZ Euler to Quaternion).
+  * [x] Modern 3D format export (standard **glTF 2.0 / .glb** with embedded textures and 8 animation tracks).
+* **Phase 2: Visualization (Interactive 3D Tool)** 🟢 **Complete**
+  * [x] Three.js WebGL interactive 3D viewport (OrbitControls, studio lighting, ground grid).
+  * [x] Skeletal animation timeline playback (scrubbing, play/pause, looping, 0.25x - 2x speed controls).
+  * [x] Retro pixelated NEAREST texture sampling and wireframe / bone helper overlays.
+  * [x] Digimon Card Database (`CARD2.CDD`) integration mapping 190+ model IDs to official Digimon names.
+  * [x] Multi-threaded local Web Viewer server (`poetry run dcb-viewer serve`).
 
 ---
 
@@ -75,39 +77,50 @@ dcb_model_viewer/
 │   ├── exporters/            # Exporters to modern formats
 │   │   ├── __init__.py
 │   │   └── gltf.py           # glTF 2.0 / GLB exporter
-│   └── gui/                  # Phase 2: Interactive 3D visualization
+│   └── web/                  # Phase 2: Web 3D visualization
 │       ├── __init__.py
-│       ├── app.py            # Application window & UI controls
-│       └── renderer/         # Shader pipeline & viewport rendering
-└── tests/                    # Unit tests for binary decoders
+│       ├── server.py         # Multi-threaded HTTP server & API
+│       └── static/           # Three.js SPA (HTML5/CSS3/ES6)
+└── tests/                    # Pytest test suite (12/12 passing)
 ```
 
 ---
 
-## 🚀 Getting Started (Preliminary)
+## 🚀 Getting Started & Usage
 
-### 1. Prerequisites
-* Python 3.10 or higher.
-* `pip` and virtual environment support.
-
-### 2. Setup Environment
+### 1. Setup Environment
+This project uses **Python 3.13** and **Poetry**:
 ```bash
 # Clone the repository
 git clone https://github.com/your-username/dcb_model_viewer.git
 cd dcb_model_viewer
 
-# Create virtual environment
-python -m venv .venv
-
-# Activate virtual environment
-# Windows (PowerShell):
-.venv\Scripts\Activate.ps1
-# Linux/macOS:
-source .venv/bin/activate
-
-# Install dependencies (once requirements.txt is available)
-pip install -r requirements.txt
+# Install dependencies into local virtualenv (.venv)
+poetry install
 ```
+
+### 2. Extract Disc & Assets
+Dump your legally owned game disc (`SLUS-01328`) with `dumpsxiso`:
+```bash
+# Unpack all virtual drive archives (.DRV)
+poetry run dcb-viewer unpack-drv original_iso/dump original_iso/extracted
+```
+
+### 3. Batch Convert Digimon to glTF 2.0 / GLB
+Convert all 267 3D Digimon models, textures, skeletons, and animations:
+```bash
+poetry run dcb-viewer batch-export-gltf original_iso/extracted/F original_iso/extracted/models
+```
+
+### 4. Launch the Interactive Web 3D Viewer
+Start the viewer and explore the 3D models and animations in your browser:
+```bash
+poetry run dcb-viewer serve
+```
+Open **`http://127.0.0.1:8080/`** to:
+* Search and browse all 267 Digimon models.
+* Orbit, pan, and zoom around any model with realistic lighting or wireframe mode.
+* Play, pause, scrub, and change speed for all 8 animation tracks (`Idle`, `Attack 1`, `Attack 2`, `Finisher`, `Take Damage`, `Defeat`, `Victory`, `Guard`).
 
 ---
 
