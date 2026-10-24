@@ -98,4 +98,10 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
     * Created `dcb_viewer/web/static/index.html` (Modern Three.js WebGL app with OrbitControls, Animation timeline scrubber, Play/Pause, speed adjustment, wireframe, skeleton bone helpers, and instant search).
     * Added `dcb-viewer serve` CLI command.
     * Verified 12/12 unit and integration tests passing (`tests/test_server.py`).
+  * **Critical Skinning & Animation Alignment Fix**:
+    * Diagnosed spiky mesh stretching and geometric distortion during animation playback:
+      1. **glTF Bind-Pose Vertex Space Mismatch**: The glTF 2.0 specification requires the `POSITION` attribute of skinned meshes to be in bind-pose model space, not bone-local space. Using bone-local coordinates caused `M_joint * inv(M_bind)` to apply inverse bind translations to local vertices instead of world vertices, collapsing bones towards the origin and stretching geometry outward during rotation.
+      2. **Column-Major Matrix Layout**: glTF `MAT4` accessors mandate column-major order. NumPy C-contiguous matrices were packed row-major, causing translation vectors to be read as the bottom row ($w$-row) and skewing perspective projections. Resolved by storing matrices transposed (`ascontiguousarray(inv_m.T)`).
+      3. **Bone Translation Channels**: Added animation channels for bones animating translation (`[(bx + tx) * scale, -(by + ty) * scale, -(bz + tz) * scale]`), enabling character breathing, jumping, and vertical translation offsets.
+    * Re-exported all 267 Digimon GLB models with the fixes applied. Tested and verified clean, natural animations across models.
   * **Phase 2 (3D Web Visualization) is 100% complete!**

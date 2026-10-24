@@ -261,19 +261,18 @@ def export_model_to_glb(
         local_verts = bone.mesh.vertices.copy()
         local_norms = bone.mesh.normals.copy()
 
-        if not skinned:
-            # Bake rest pose into world space
-            rot_m = bone.global_transform[:3, :3]
-            t_v = bone.global_transform[:3, 3]
-            v_world = (local_verts @ rot_m.T) + t_v
-            n_world = local_norms @ rot_m.T
-            # PSX coordinate inversion
-            gl_verts = v_world * [scale, -scale, -scale]
-            gl_norms = n_world * [1.0, -1.0, -1.0]
-        else:
-            # In local bone space, coordinates are transformed relative to bone origin
-            gl_verts = local_verts * [scale, -scale, -scale]
-            gl_norms = local_norms * [1.0, -1.0, -1.0]
+        # glTF 2.0 Skinning Specification:
+        # Vertex attributes (POSITION, NORMAL) in the buffer MUST be in bind-pose model space!
+        # The skin inverseBindMatrices IBM(j) = inv(M_bind(j)) will transform bind-pose vertices
+        # into bone-local space before animated joint matrices M_anim(j) transform them to animated model space.
+        rot_m = bone.global_transform[:3, :3]
+        t_v = bone.global_transform[:3, 3]
+        v_world = (local_verts @ rot_m.T) + t_v
+        n_world = local_norms @ rot_m.T
+
+        # PSX coordinate inversion: x' = x, y' = -y, z' = -z
+        gl_verts = v_world * [scale, -scale, -scale]
+        gl_norms = n_world * [1.0, -1.0, -1.0]
 
         # Normalize normals
         norms_len = np.linalg.norm(gl_norms, axis=1, keepdims=True)
@@ -389,7 +388,7 @@ def export_model_to_glb(
         bone_node_offset = 1
         num_bones = model.bone_count
 
-        # Build inverse bind matrices
+        # Build inverse bind matrices (glTF MAT4 requires column-major order)
         inv_bind_matrices = []
         for bone in model.bones:
             # Transform matrix to glTF space
@@ -402,7 +401,8 @@ def export_model_to_glb(
                 inv_m = np.linalg.inv(m)
             except np.linalg.LinAlgError:
                 inv_m = np.identity(4, dtype=np.float32)
-            inv_bind_matrices.append(inv_m.astype(np.float32))
+            # Transpose to column-major order for glTF MAT4 accessor
+            inv_bind_matrices.append(np.ascontiguousarray(inv_m.T, dtype=np.float32))
 
         inv_bind_arr = np.stack(inv_bind_matrices, axis=0)
         inv_bv = builder.add_buffer_view(inv_bind_arr.tobytes())
@@ -482,6 +482,49 @@ def export_model_to_glb(
 
             for bone_idx in range(num_bones):
                 target_node = bone_idx + bone_node_offset
+                bone = model.bones[bone_idx]
+                bx, by, bz = bone.local_position
+
+                # Translations (export if any frame animates translation)
+                has_trans = any(
+                    any(abs(v) > 1e-4 for v in kf.bone_transforms[bone_idx].trans)
+                    for kf in clip.keyframes
+                    if bone_idx < len(kf.bone_transforms)
+                )
+
+                if has_trans:
+                    trans_list = []
+                    for kf in clip.keyframes:
+                        if bone_idx < len(kf.bone_transforms):
+                            tx, ty, tz = kf.bone_transforms[bone_idx].trans
+                            trans_list.append([
+                                (bx + tx) * scale,
+                                -(by + ty) * scale,
+                                -(bz + tz) * scale,
+                            ])
+                        else:
+                            trans_list.append([
+                                bx * scale,
+                                -by * scale,
+                                -bz * scale,
+                            ])
+
+                    t_arr = np.array(trans_list, dtype=np.float32)
+                    t_bv = builder.add_buffer_view(t_arr.tobytes())
+                    t_min = t_arr.min(axis=0).tolist()
+                    t_max = t_arr.max(axis=0).tolist()
+                    t_acc = builder.add_accessor(t_bv, COMP_FLOAT, len(t_arr), "VEC3", t_min, t_max)
+
+                    t_sampler_idx = len(samplers)
+                    samplers.append({
+                        "input": time_acc,
+                        "output": t_acc,
+                        "interpolation": "LINEAR",
+                    })
+                    channels.append({
+                        "sampler": t_sampler_idx,
+                        "target": {"node": target_node, "path": "translation"},
+                    })
 
                 # Rotations
                 quats = []
