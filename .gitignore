@@ -24,10 +24,11 @@ external_repository/
 Thumbs.db
 .DS_Store
 
-# Temporary / testing files
-scratch/
-output/
+# Proprietary game assets & dumps
+original_iso/
 dump/
+output/
+scratch/
 *.bin
 *.iso
 *.cue
