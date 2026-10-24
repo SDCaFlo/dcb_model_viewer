@@ -20,8 +20,8 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
 | **P1-01** | Python Environment Setup (pyenv + poetry + Python 3.13) | 🟢 Done | Poetry 2.4.1 + Python 3.13.13 in .venv with numpy, pillow, pygltflib, construct |
 | **P1-02** | External Repositories Setup (`dcb_decomp`, `mkpsxiso`) | 🟢 Done | Cloned into `external_repository/` (ignored in git) |
 | **P1-03** | Project Standards & Guidelines (`AGENTS.md`, `PROGRESS.md`) | 🟢 Done | Operational guides and backlog established |
-| **P1-04** | Disc Structure & Archive Analysis | ⚪ Backlog | Identify files on SLUS-01328 (.BIN, .PAC, LBA tables) |
-| **P1-05** | Decompilation Research (`dcb_decomp`) | ⚪ Backlog | Locate model structs, vertex formats, GTE draw calls |
+| **P1-04** | Disc Structure & Archive Analysis | 🟢 Done | Extracted disc via `dumpsxiso`. Identified `.DRV` virtual drive archives (`cd_file.c` struct `FileEntry`) |
+| **P1-05** | Decompilation Research (`dcb_decomp`) | 🟡 In Progress | Documented `.DRV` header format (32-byte entries, sector offset `<< 11`) |
 | **P1-06** | PSX TIM Texture Decoder | ⚪ Backlog | Parse 4-bit / 8-bit / 16-bit TIMs and CLUT palettes to PNG |
 | **P1-07** | 3D Mesh Geometry Parser | ⚪ Backlog | Parse vertices, normals, UVs, polygon packets (tris/quads) |
 | **P1-08** | Bone Hierarchy & Skeleton Parser | ⚪ Backlog | Parse joint transforms and parent-child hierarchy |
@@ -54,7 +54,12 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
 ## 📝 Activity Log
 
 * **2026-10-24**:
-  * Project initialized.
-  * Formulated project scope, architecture, and README.md.
-  * Configured Python 3.13 with pyenv and Poetry.
-  * Created `AGENTS.md` and `PROGRESS.md` tracking system.
+  * Project initialized with Python 3.13, Poetry, `AGENTS.md`, and `PROGRESS.md`.
+  * Cloned reference repositories `dcb_decomp` and `mkpsxiso` into `external_repository/`.
+  * Built `mkpsxiso` and `dumpsxiso` binaries using CMake and MinGW GCC/Ninja.
+  * Extracted game disc (`Digimon Digital Card Battle.bin`) into `original_iso/dump/`.
+  * Analyzed disc layout: Found `.DRV` virtual drive containers (`A.DRV`, `B.DRV`, `C.DRV`, `E.DRV`, `F.DRV`, `G.DRV`, `P.DRV`) and `MMM.DAT`.
+  * Reverse-engineered the `.DRV` container format from `external_repository/dcb_decomp/src/main/system/cd_file.c`:
+    * Each container has a table of 32-byte `FileEntry` records (`key`, `sector`, `size`, `unkC`, `name`).
+    * Offsets are sector-based (`sector * 2048`).
+    * Keys encode file extension or directory marker (`0x80`).
