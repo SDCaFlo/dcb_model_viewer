@@ -15,6 +15,7 @@ from dcb_viewer.formats.archive import (
     CHUNK_ID_ANIMATION,
     CHUNK_ID_TEXTURE,
 )
+from dcb_viewer.formats.tim import parse_tim, parse_tim_list
 
 
 def cmd_inspect_drv(args: argparse.Namespace) -> None:
@@ -103,6 +104,48 @@ def cmd_inspect_pak(args: argparse.Namespace) -> None:
         print(f"{idx:<6} {c.chunk_id:<10} {c.sub_id:<8} {c.size:<10,} {type_str} | {details}")
 
 
+def cmd_extract_tim(args: argparse.Namespace) -> None:
+    """Extracts and converts TIM textures (from .TIM or .PAK) to PNG."""
+    input_path = Path(args.input_path)
+    output_path = Path(args.output_path)
+
+    if not input_path.is_file():
+        print(f"Error: File not found: {input_path}", file=sys.stderr)
+        sys.exit(1)
+
+    raw_bytes = input_path.read_bytes()
+    tim_data_list: list[bytes] = []
+
+    if input_path.suffix.upper() == ".PAK":
+        pak = PakArchive(raw_bytes)
+        tex_chunks = pak.find_all_chunks(CHUNK_ID_TEXTURE)
+        if not tex_chunks:
+            print(f"No texture chunks (ID=5) found in {input_path.name}")
+            sys.exit(1)
+        for c in tex_chunks:
+            tim_data_list.append(c.data)
+    else:
+        tim_data_list.append(raw_bytes)
+
+    total_exported = 0
+    for idx, data in enumerate(tim_data_list):
+        images = parse_tim_list(data)
+        for img_idx, img in enumerate(images):
+            # Export all palette variations
+            for pal_idx in range(img.palette_count):
+                if output_path.suffix.lower() == ".png" and len(images) == 1 and img.palette_count == 1:
+                    dest = output_path
+                else:
+                    stem = input_path.stem
+                    suffix = f"_tex{img_idx}_pal{pal_idx}.png" if img.palette_count > 1 else f"_tex{img_idx}.png"
+                    dest = output_path / f"{stem}{suffix}" if output_path.is_dir() else output_path.with_name(f"{output_path.stem}{suffix}")
+                img.save_png(dest, palette_idx=pal_idx)
+                print(f"Exported: {dest} ({img.pixel_width}x{img.pixel_height}, BPP: {img.bpp.name}, Palette: {pal_idx})")
+                total_exported += 1
+
+    print(f"\nDone! Successfully exported {total_exported} PNG texture(s).")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="dcb-viewer",
@@ -125,6 +168,12 @@ def main() -> None:
     p_ins_pak = subparsers.add_parser("inspect-pak", help="Inspect chunks inside a .PAK file")
     p_ins_pak.add_argument("pak_path", help="Path to .PAK file")
     p_ins_pak.set_defaults(func=cmd_inspect_pak)
+
+    # extract-tim
+    p_ext_tim = subparsers.add_parser("extract-tim", help="Extract and convert PSX TIM textures to PNG")
+    p_ext_tim.add_argument("input_path", help="Path to .TIM or .PAK file")
+    p_ext_tim.add_argument("output_path", help="Target output directory or .png path")
+    p_ext_tim.set_defaults(func=cmd_extract_tim)
 
     args = parser.parse_args()
     args.func(args)

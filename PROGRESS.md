@@ -23,11 +23,11 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
 | **P1-04** | Disc Structure & Archive Analysis | 🟢 Done | Extracted disc via `dumpsxiso`. Identified `.DRV` virtual drive archives (`cd_file.c` struct `FileEntry`) |
 | **P1-05** | Decompilation Research (`dcb_decomp`) | 🟢 Done | Reverse-engineered `.DRV` format, `.PAK` chunk structure (`archive.c`), and LZSS+Huffman decompression (`decompress.c`) |
 | **P1-06** | Archive Unpacker & Decompressor | 🟢 Done | Implemented `DrvArchive`, `PakArchive`, and `decompress_lz_huffman` in `dcb_viewer/formats/archive.py` and CLI tools |
-| **P1-07** | PSX TIM Texture Decoder | ⚪ Backlog | Parse 4-bit / 8-bit / 16-bit TIMs and CLUT palettes to PNG |
-| **P1-07** | 3D Mesh Geometry Parser | ⚪ Backlog | Parse vertices, normals, UVs, polygon packets (tris/quads) |
-| **P1-08** | Bone Hierarchy & Skeleton Parser | ⚪ Backlog | Parse joint transforms and parent-child hierarchy |
-| **P1-09** | Skeletal Animation Parser | ⚪ Backlog | Parse rotation, translation, and keyframe tracks |
-| **P1-10** | glTF 2.0 / GLB Exporter | ⚪ Backlog | Export rigged, textured models with animations to `.glb` |
+| **P1-07** | PSX TIM Texture Decoder | 🟢 Done | Implemented `TimImage`, `parse_tim`, `parse_tim_list` in `dcb_viewer/formats/tim.py` with multi-CLUT and PIL/NumPy support |
+| **P1-08** | 3D Mesh Geometry Parser | 🟢 Done | Implemented OMD / OMD0 mesh parser in `dcb_viewer/formats/model.py` (SVECTOR vertices, normals, quads/tris, UVs) |
+| **P1-09** | Bone Hierarchy & Skeleton Parser | 🟢 Done | Implemented `BoneNode`, parent hierarchy, and local/global rest-pose matrix transformations |
+| **P1-10** | Skeletal Animation Parser | ⚪ Backlog | Parse rotation, translation, and keyframe tracks (Chunk 1) |
+| **P1-11** | glTF 2.0 / GLB Exporter | ⚪ Backlog | Export rigged, textured models with animations to `.glb` |
 
 ---
 
@@ -74,3 +74,9 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
   * Created `dcb_viewer/formats/archive.py` (`DrvArchive`, `PakArchive`, `decompress_lz_huffman`) and `dcb_viewer/cli.py`.
   * Verified unit & integration tests (`tests/test_archive.py`) passing 100%.
   * Unpacked all 2,401 files across all `.DRV` disc archives to `original_iso/extracted/`.
+  * Implemented PSX TIM texture decoder in `dcb_viewer/formats/tim.py` with multi-palette CLUT support, export to PNG via Pillow, and NumPy arrays.
+  * Reverse-engineered OMD 3D model format from `model_load.c`, `scene3d.c`, and `tmd_sort.c`:
+    * Parsed bone hierarchy (`parent` indices), rest-pose joint vectors.
+    * Parsed `OMD0` blocks: `partCount`, `vertCount`, SVECTOR coordinates, normal groups, and `sortModelPrimitives` polygon packets (quads & triangles with UV mapping).
+    * Implemented world rest-pose baking with forward hierarchical matrix multiplication.
+  * Verified all 7 unit & integration tests passing (`pytest` 7/7).
