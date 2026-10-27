@@ -54,6 +54,12 @@ This document tracks the active progress, roadmap milestones, completed tasks, a
 
 ## 📝 Activity Log
 
+* **2026-10-27**:
+  * Published initial open-source release to GitHub (`https://github.com/SDCaFlo/dcb_model_viewer`):
+    * Audited repository for clean-room legal compliance: confirmed zero proprietary ROMs, disc dumps, or textures tracked.
+    * Added comprehensive `README.md` with step-by-step extraction guide and MKPSXISO dependency setup.
+    * Added standard open-source MIT `LICENSE` file.
+    * Configured remote origin and pushed `main` branch.
 * **2026-10-24**:
   * Resolved Blender pauldron shading artifact ("black splotch") on Magnamon #189 and other models:
     * **Root Cause 1: Normal Table Decoupling & Truncation**:
