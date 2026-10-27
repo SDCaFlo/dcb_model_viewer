@@ -215,6 +215,14 @@ poetry run pytest tests/
 
 ---
 
+## 🤖 AI Development Disclaimer
+
+This project, its binary parsing logic, mathematical conversions, and web visualization suite were developed with the assistance of AI (Google DeepMind's Antigravity pair programming assistant).
+
+All reverse-engineering discoveries, binary structures, and mathematical algorithms have been cross-referenced against the decompiled C source code ([`dcb_decomp`](https://github.com/ReGame-Labs/dcb_decomp)) and verified across all 267 game models. However, as with any AI-assisted project, there may be unique stylistic conventions or edge cases. Feedback, bug reports, and pull requests from the community are always welcome!
+
+---
+
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
