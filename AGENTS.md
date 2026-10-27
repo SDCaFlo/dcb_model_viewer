@@ -17,7 +17,7 @@ Welcome to the **DCB Model Viewer** project! This document outlines the core arc
 ## 🧭 Progress & Task Tracking
 
 > [!IMPORTANT]
-> **Always consult [PROGRESS.md](file:///f:/Projects/digimon/dcb_model_viewer/PROGRESS.md) before starting any task.**
+> **Always consult [PROGRESS.md](PROGRESS.md) before starting any task.**
 > - Check current milestone status and active backlog items.
 > - Whenever a milestone, task, or significant subtask is completed or altered, **update `PROGRESS.md` immediately**.
 > - Log notable architectural discoveries or format breakthroughs in the `Activity Log` section of `PROGRESS.md`.

@@ -2,14 +2,20 @@
 .venv/
 env/
 venv/
+ENV/
 
-# Python cache
+# Python cache & test artifacts
 __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
 dist/
 build/
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+*.tmp
 
 # External third-party repositories
 external_repository/
@@ -23,12 +29,33 @@ external_repository/
 # OS files
 Thumbs.db
 .DS_Store
+desktop.ini
 
-# Proprietary game assets & dumps
+# Proprietary game assets, dumps & exports (Clean-Room policy)
 original_iso/
 dump/
+data/
+models/
 output/
 scratch/
+extracted/
 *.bin
 *.iso
 *.cue
+*.img
+*.mdf
+*.mds
+*.ccd
+*.sub
+*.pak
+*.PAK
+*.drv
+*.DRV
+*.tim
+*.TIM
+*.cdd
+*.CDD
+*.omd
+*.OMD
+*.glb
+*.gltf
